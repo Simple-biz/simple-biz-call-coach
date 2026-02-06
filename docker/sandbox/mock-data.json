@@ -1,0 +1,120 @@
+{
+  "marksGoldenScripts": {
+    "GREETING": [
+      "Good morning, can you hear me okay?",
+      "My name is [Agent], and Bob and I are here to help your company get more business and boost its online presence.",
+      "Is this [Business Name]?",
+      "Are you the owner or decision maker?",
+      "Perfect! I wanted to reach out because we specialize in helping local businesses like yours.",
+      "Do you have a quick moment to chat about your online visibility?"
+    ],
+    "VALUE_PROP": [
+      "We help businesses like yours rank higher on Google when customers search for your services.",
+      "Our clients typically see 3-5x more website traffic within 90 days.",
+      "We handle everything - website optimization, Google Business Profile, and local SEO."
+    ],
+    "OBJECTION": [
+      "I totally understand - you're probably getting calls like this all the time.",
+      "That's exactly why I'm calling - most businesses don't realize how much money they're leaving on the table.",
+      "Oh okay. I mean, that's great because we also optimize websites as well.",
+      "What if I could show you exactly where you're losing customers online - would that be worth 5 minutes?",
+      "Fair enough - can I at least send you a free audit showing your current online visibility?",
+      "I appreciate your honesty. Just so you know, our clients in [Industry] typically see ROI within the first 60 days.",
+      "No problem - would you prefer I follow up via email instead?",
+      "Understood. Before I let you go, can I ask what you're currently doing for marketing?"
+    ],
+    "CLOSING": [
+      "Perfect! Let me get your email and I'll send over that free audit.",
+      "Great - I'll have Bob personally review your business and send recommendations by end of day.",
+      "Sounds good - expect an email from me within the hour with next steps.",
+      "Excellent! I'm going to schedule a quick 15-minute call with Bob - does [Day/Time] work?",
+      "Perfect - you'll receive a calendar invite and the audit within 30 minutes.",
+      "Great talking with you! You're going to love what Bob puts together.",
+      "Looking forward to helping you grow! Talk soon.",
+      "Thanks for your time - check your inbox in about an hour.",
+      "Appreciate it! We'll get that audit over to you today.",
+      "Awesome - you made a great decision. We'll take great care of you.",
+      "Perfect! You'll hear from us very soon. Have a great day!"
+    ],
+    "CONVERSION": [
+      "One more thing - we're running a promotion this month. Are you interested in hearing about it?",
+      "Before we hang up - we have limited slots available this quarter. Want to lock in your spot?"
+    ]
+  },
+  "mockIntelligence": {
+    "positive": {
+      "sentiment": {
+        "label": "positive",
+        "score": 0.85,
+        "averageScore": 0.85
+      },
+      "intents": [
+        { "intent": "interested", "confidence": 0.9, "segment": "sounds good" },
+        { "intent": "purchase_intent", "confidence": 0.75, "segment": "send me info" }
+      ],
+      "topics": [
+        { "topic": "website_optimization", "confidence": 0.88, "segment": "SEO" },
+        { "topic": "local_business", "confidence": 0.82, "segment": "Google ranking" }
+      ],
+      "summary": "Customer showing strong interest in services",
+      "lastUpdated": 0
+    },
+    "neutral": {
+      "sentiment": {
+        "label": "neutral",
+        "score": 0.0,
+        "averageScore": 0.0
+      },
+      "intents": [
+        { "intent": "information_seeking", "confidence": 0.7, "segment": "tell me more" }
+      ],
+      "topics": [
+        { "topic": "general_inquiry", "confidence": 0.65, "segment": "what do you do" }
+      ],
+      "summary": "Customer in discovery phase",
+      "lastUpdated": 0
+    },
+    "negative": {
+      "sentiment": {
+        "label": "negative",
+        "score": -0.8,
+        "averageScore": -0.8
+      },
+      "intents": [
+        { "intent": "rejection", "confidence": 0.95, "segment": "not interested" },
+        { "intent": "terminate_call", "confidence": 0.85, "segment": "don't call again" }
+      ],
+      "topics": [
+        { "topic": "cold_call_rejection", "confidence": 0.9, "segment": "stop calling" }
+      ],
+      "summary": "Customer showing resistance",
+      "lastUpdated": 0
+    }
+  },
+  "mockEntities": {
+    "business": {
+      "businessNames": ["Simple.Biz", "Bob's Digital Marketing"],
+      "contactInfo": {
+        "emails": ["info@simple.biz"],
+        "phoneNumbers": [],
+        "urls": ["https://simple.biz"]
+      },
+      "locations": ["Denver", "Colorado"],
+      "dates": [],
+      "people": ["Bob"],
+      "timestamp": 0
+    },
+    "customer": {
+      "businessNames": [],
+      "contactInfo": {
+        "emails": [],
+        "phoneNumbers": [],
+        "urls": []
+      },
+      "locations": [],
+      "dates": [],
+      "people": [],
+      "timestamp": 0
+    }
+  }
+}

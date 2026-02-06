@@ -1,0 +1,20 @@
+{
+  "name": "devassist-sandbox",
+  "version": "1.0.0",
+  "description": "DevAssist Call Coach - Offline Sandbox WebSocket Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

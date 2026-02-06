@@ -1,0 +1,458 @@
+import { useEffect, useState } from "react";
+import { Phone, Mic, Activity, CheckCircle, LogOut } from "lucide-react";
+import { useCallStore } from "@/stores/call-store";
+import Login from "./Login";
+
+export default function Popup() {
+  const { callState, audioLevel } = useCallStore();
+  const [isStarting, setIsStarting] = useState(false);
+  const [isCallToolsTab, setIsCallToolsTab] = useState(true);
+  const [isCheckingTab, setIsCheckingTab] = useState(true);
+  const [hasUsedBefore, setHasUsedBefore] = useState(false);
+  const [isCallDetected, setIsCallDetected] = useState(false);
+  const [isCheckingCall, setIsCheckingCall] = useState(true);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
+  useEffect(() => {
+    chrome.storage.local.get(["userEmail"], (result) => {
+      setUserEmail(result.userEmail || null);
+      setIsCheckingAuth(false);
+      if (result.userEmail) {
+        console.log("📧 [Popup] User logged in:", result.userEmail);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
+    if (userEmail) {
+      useCallStore.getState().loadFromStorage();
+    }
+  }, [userEmail]);
+
+  useEffect(() => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const currentTab = tabs[0];
+      const isCallTools = currentTab?.url?.includes("calltools.io");
+      setIsCallToolsTab(!!isCallTools);
+      setIsCheckingTab(false);
+    });
+
+    chrome.storage.local.get(["hasUsedBefore"], (result) => {
+      setHasUsedBefore(result.hasUsedBefore || false);
+    });
+  }, []);
+
+  useEffect(() => {
+    let pollInterval: number | undefined;
+
+    const checkCallStatus = async () => {
+      try {
+        const [tab] = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+
+        if (tab?.id && tab.url?.includes("calltools.io")) {
+          const response = await chrome.tabs.sendMessage(tab.id, {
+            type: "CHECK_CALL_STATUS",
+          });
+          setIsCallDetected(response?.isCallActive || false);
+        } else {
+          setIsCallDetected(false);
+        }
+        setIsCheckingCall(false);
+      } catch (error) {
+        setIsCallDetected(false);
+        setIsCheckingCall(false);
+      }
+    };
+
+    if (userEmail && isCallToolsTab && !isCheckingTab) {
+      checkCallStatus();
+      pollInterval = window.setInterval(checkCallStatus, 2000);
+    }
+
+    return () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
+    };
+  }, [userEmail, isCallToolsTab, isCheckingTab]);
+
+  useEffect(() => {
+    const handleMessage = (message: any) => {
+      if (message.type === "AUDIO_LEVEL") {
+        useCallStore.setState({ audioLevel: message.level });
+      }
+      if (message.type === "CALL_STARTED") {
+        useCallStore.getState().setCallState("active");
+        console.log("✅ [Popup] State updated to ACTIVE");
+      }
+      if (message.type === "CALL_ENDED") {
+        useCallStore.getState().setCallState("inactive");
+        console.log("✅ [Popup] State updated to INACTIVE");
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(handleMessage);
+    return () => chrome.runtime.onMessage.removeListener(handleMessage);
+  }, []);
+
+  const handleLogin = (email: string) => {
+    chrome.storage.local.set({ userEmail: email }, () => {
+      setUserEmail(email);
+      chrome.storage.local.set({ deepgramApiKey: "e06e624c52e5974a4e5162b3c93306ecdda52bc9" });
+      console.log("✅ [Popup] User logged in:", email);
+    });
+  };
+
+  const handleLogout = () => {
+    if (
+      confirm(
+        "Are you sure you want to logout? This will stop all active coaching sessions."
+      )
+    ) {
+      if (callState === "active") {
+        handleStopCoaching();
+      }
+
+      chrome.storage.local.remove("userEmail", () => {
+        setUserEmail(null);
+        console.log("✅ [Popup] User logged out");
+      });
+    }
+  };
+
+  const handleStartCoaching = async () => {
+    try {
+      setIsStarting(true);
+
+      chrome.storage.local.set({ hasUsedBefore: true });
+      setHasUsedBefore(true);
+
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+
+      if (!tab.id) {
+        alert("Could not identify current tab");
+        setIsStarting(false);
+        return;
+      }
+
+      if (!tab.url?.includes("calltools.io")) {
+        alert("Please navigate to CallTools agent page first");
+        setIsStarting(false);
+        return;
+      }
+
+      try {
+        const response = await chrome.tabs.sendMessage(tab.id, {
+          type: "CHECK_CALL_STATUS",
+        });
+
+        if (!response?.isCallActive) {
+          alert(
+            "⚠️ No active call detected.\n\nPlease start or answer a call first, then click this button."
+          );
+          setIsStarting(false);
+          return;
+        }
+
+        console.log("✅ [Popup] Active call confirmed - starting coaching");
+      } catch (error) {
+        console.error("❌ [Popup] Call status check failed:", error);
+        alert(
+          "Could not verify call status. Please make sure you're on an active call and try again."
+        );
+        setIsStarting(false);
+        return;
+      }
+
+      chrome.runtime.sendMessage({
+        type: "START_COACHING_FROM_POPUP",
+        tabId: tab.id,
+        timestamp: Date.now(),
+        userEmail: userEmail,
+      });
+
+      useCallStore.getState().setCallState("active");
+      setIsStarting(false);
+
+      if (chrome.sidePanel) {
+        chrome.sidePanel.open({ windowId: tab.windowId });
+      }
+    } catch (error) {
+      console.error("❌ [Popup] Start coaching failed:", error);
+      alert("Failed to start coaching. Please try again.");
+      setIsStarting(false);
+    }
+  };
+
+  const handleStopCoaching = async () => {
+    try {
+      const [tab] = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
+
+      if (tab.id) {
+        chrome.tabs.sendMessage(tab.id, { type: "STOP_COACHING" }).catch(() => {
+          console.warn("⚠️ [Popup] Could not reach content script");
+        });
+      }
+
+      chrome.runtime.sendMessage({
+        type: "CALL_ENDED",
+        timestamp: Date.now(),
+      });
+
+      useCallStore.getState().setCallState("inactive");
+      console.log("✅ [Popup] Coaching stopped manually");
+    } catch (error) {
+      console.error("❌ [Popup] Stop coaching failed:", error);
+    }
+  };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+        <div className="text-center py-8">
+          <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-sm text-gray-400 mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!userEmail) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  if (isCheckingTab) {
+    return (
+      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+        <div className="text-center py-8">
+          <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-sm text-gray-400 mt-4">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isCallToolsTab) {
+    return (
+      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+        <div className="text-center py-8">
+          <div className="p-4 bg-purple-500/10 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
+            <Phone className="w-10 h-10 text-purple-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-white mb-2">
+            CallTools Only
+          </h3>
+          <p className="text-sm text-gray-400 leading-relaxed mb-4">
+            This extension only works on the CallTools.io platform.
+          </p>
+          <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg mb-4">
+            <p className="text-xs text-gray-500">
+              💡 Navigate to CallTools agent dashboard to activate coaching
+              features
+            </p>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const isCallActive = callState === "active";
+
+  return (
+    <div className="w-80 bg-gradient-to-br from-gray-900 to-gray-800 text-white">
+      <div className="p-6 pb-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-purple-500/20 rounded-lg">
+              <Phone className="w-6 h-6 text-purple-400" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">Simple.Biz Call Coach</h1>
+              <p className="text-xs text-gray-400">Real-time AI coaching</p>
+            </div>
+          </div>
+
+          <button
+            onClick={handleLogout}
+            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            title="Logout"
+          >
+            <LogOut className="w-4 h-4 text-gray-400" />
+          </button>
+        </div>
+
+        <div className="mt-2 text-xs text-gray-500">
+          Logged in as: <span className="text-purple-400">{userEmail}</span>
+        </div>
+      </div>
+
+      {!hasUsedBefore && !isCallActive && (
+        <div className="px-6 pb-4">
+          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              How to Use
+            </h3>
+            <ol className="text-xs text-gray-300 space-y-2">
+              <li className="flex gap-2">
+                <span className="font-bold text-blue-400">1.</span>
+                <span>Start or answer a call in CallTools</span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-bold text-blue-400">2.</span>
+                <span>
+                  Click the <strong>"Start AI Coaching"</strong> button below
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-bold text-blue-400">3.</span>
+                <span>
+                  The side panel will open with live transcription and AI tips
+                </span>
+              </li>
+            </ol>
+          </div>
+        </div>
+      )}
+
+      <div className="px-6 pb-4">
+        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium">Call Status</span>
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  isCallActive ? "bg-green-500 animate-pulse" : "bg-gray-500"
+                }`}
+              />
+              <span className="text-xs text-gray-400">
+                {isCallActive ? "Active" : "Inactive"}
+              </span>
+            </div>
+          </div>
+
+          {isCallActive && (
+            <div className="mt-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Activity className="w-3 h-3 text-gray-400" />
+                <span className="text-xs text-gray-400">Audio Level</span>
+              </div>
+              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-100"
+                  style={{ width: `${audioLevel}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {!isCallActive && (
+        <div className="px-6 pb-4">
+          <button
+            onClick={handleStartCoaching}
+            disabled={isStarting || !isCallDetected || isCheckingCall}
+            className={`w-full py-3 px-4 ${
+              isCallDetected && !isStarting
+                ? "bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 shadow-lg hover:shadow-green-500/20"
+                : "bg-gray-600 cursor-not-allowed opacity-50"
+            } text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed`}
+          >
+            <Mic className="w-5 h-5" />
+            {isStarting
+              ? "Starting..."
+              : isCheckingCall
+              ? "Checking..."
+              : isCallDetected
+              ? "Start AI Coaching"
+              : "No Active Call"}
+          </button>
+          <p className="text-xs text-center text-gray-500 mt-2">
+            {isCallDetected
+              ? "Click to start AI coaching"
+              : "Start a call first to enable coaching"}
+          </p>
+        </div>
+      )}
+
+      {isCallActive && (
+        <div className="px-6 pb-4">
+          <div className="space-y-3">
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <p className="text-sm text-green-400 font-medium flex items-center gap-2">
+                <CheckCircle className="w-4 h-4" />
+                Coaching Active
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                AI is listening and providing real-time tips
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                if (chrome.sidePanel) {
+                  chrome.tabs.query(
+                    { active: true, currentWindow: true },
+                    (tabs) => {
+                      if (tabs[0]?.windowId) {
+                        chrome.sidePanel.open({ windowId: tabs[0].windowId });
+                      }
+                    }
+                  );
+                }
+              }}
+              className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-200"
+            >
+              Open Coaching Panel
+            </button>
+
+            <button
+              onClick={handleStopCoaching}
+              className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-all duration-200"
+            >
+              Stop Coaching
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="px-6 pb-6 pt-2 border-t border-gray-700">
+        <div className="grid grid-cols-2 gap-4 text-center">
+          <div>
+            <p className="text-2xl font-bold text-white">0</p>
+            <p className="text-xs text-gray-400">Calls Today</p>
+          </div>
+          <div>
+            <p className="text-2xl font-bold text-white">0m</p>
+            <p className="text-xs text-gray-400">Avg Duration</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

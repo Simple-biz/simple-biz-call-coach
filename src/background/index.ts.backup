@@ -1,0 +1,441 @@
+// Background Service Worker
+console.log("🚀 [Background] Service worker started");
+
+// Keep-alive mechanism
+let keepAliveInterval: number | null = null;
+
+// Track active captures to prevent duplicates
+const activeCaptures = new Set<number>();
+
+// Track current call state globally
+let currentCallState = {
+  isActive: false,
+  tabId: null as number | null,
+  userEmail: null as string | null,
+  startTime: null as number | null,
+};
+
+function startKeepAlive() {
+  if (keepAliveInterval) return;
+
+  console.log("🔄 [Background] Keep-alive started");
+  keepAliveInterval = setInterval(() => {
+    chrome.runtime.getPlatformInfo().then(() => {
+      // Service worker is alive
+    });
+  }, 20000) as unknown as number;
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    console.log("🛑 [Background] Keep-alive stopped");
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+// Update extension state in storage and notify all listeners
+async function updateExtensionState(
+  state: "active" | "inactive",
+  tabId?: number
+) {
+  console.log(`📡 [Background] Updating extension state to: ${state}`);
+
+  // Update storage
+  await chrome.storage.local.set({
+    callStoreState: {
+      session: currentCallState.userEmail,
+      callState: state,
+      audioState: state === "active" ? "capturing" : "idle",
+      transcriptions: [],
+      coachingTips: [],
+      tabId: tabId || null,
+      startTime: state === "active" ? Date.now() : null,
+    },
+  });
+
+  // Update badge
+  if (state === "active") {
+    chrome.action.setBadgeText({ text: "REC" });
+    chrome.action.setBadgeBackgroundColor({ color: "#FF0000" });
+  } else {
+    chrome.action.setBadgeText({ text: "" });
+  }
+
+  // Notify all listeners (popup, sidepanel, etc.)
+  chrome.runtime
+    .sendMessage({
+      type: "STATE_UPDATE",
+      payload: {
+        isActive: state === "active",
+        status: state,
+        tabId: tabId || currentCallState.tabId,
+        timestamp: Date.now(),
+      },
+    })
+    .catch((error) => {
+      // It's ok if no listeners are available
+      console.log(
+        "📡 [Background] No active listeners for state update (this is normal)"
+      );
+    });
+
+  // Also try to notify the specific tab if we have one
+  if (tabId || currentCallState.tabId) {
+    chrome.tabs
+      .sendMessage(tabId || currentCallState.tabId!, {
+        type: "EXTENSION_STATE_CHANGED",
+        state: state,
+        timestamp: Date.now(),
+      })
+      .catch(() => {
+        // Tab might not have content script, that's ok
+      });
+  }
+
+  console.log(`✅ [Background] State updated to ${state}`);
+}
+
+// Initialize extension
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log("📦 [Background] Extension installed/updated");
+
+  if (details.reason === "install" || details.reason === "update") {
+    chrome.storage.local.set(
+      {
+        callStoreState: {
+          session: null,
+          callState: "inactive",
+          audioState: "idle",
+          transcriptions: [],
+          coachingTips: [],
+          tabId: null,
+          startTime: null,
+        },
+      },
+      () => {
+        console.log("✅ [Background] Extension state reset to inactive");
+      }
+    );
+  }
+});
+
+chrome.runtime.onStartup.addListener(() => {
+  console.log("🔄 [Background] Startup - initializing keep-alive");
+  startKeepAlive();
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  handleMessage(message, sender)
+    .then((result) => {
+      sendResponse({ success: true, result });
+    })
+    .catch((error) => {
+      console.error("❌ [Background] Message handler error:", error);
+      sendResponse({ success: false, error: error.message });
+    });
+
+  return true;
+});
+
+async function handleMessage(message: any, sender: any) {
+  switch (message.type) {
+    case "CALL_STARTED":
+      console.log("📞 [Background] Call STARTED from content script");
+      startKeepAlive();
+      await handleCallStart(sender.tab?.id, message.userEmail);
+      break;
+
+    case "CALL_ENDED":
+      console.log("📞 [Background] Call ENDED");
+      await handleCallEnd(sender.tab?.id);
+      stopKeepAlive();
+      break;
+
+    case "TURN_ENDED":
+      console.log("🎯 [Background] Turn ended - generating coaching tip");
+      await generateCoachingTip(message.fullTranscript);
+      break;
+
+    case "TRANSCRIPTION":
+      break;
+
+    case "AUDIO_LEVEL_UPDATE":
+      chrome.runtime
+        .sendMessage({
+          type: "AUDIO_LEVEL",
+          level: message.level,
+        })
+        .catch(() => {});
+      break;
+
+    case "PING":
+      break;
+
+    case "START_COACHING_FROM_POPUP":
+      console.log("🎯 [Background] Start coaching requested from popup");
+      startKeepAlive();
+      await handleCallStart(message.tabId, message.userEmail);
+      break;
+
+    case "GET_CURRENT_STATE":
+      console.log("🔍 [Background] Current state requested");
+      return currentCallState;
+
+    default:
+      console.warn("⚠️ [Background] Unknown message type:", message.type);
+  }
+}
+
+async function handleCallStart(tabId?: number, userEmail?: string) {
+  console.log(
+    `🎯 [Background] Processing call start (Tab: ${tabId}, User: ${userEmail})`
+  );
+
+  if (!tabId) {
+    console.error("❌ [Background] No tab ID provided");
+    await updateExtensionState("inactive");
+    return;
+  }
+
+  if (activeCaptures.has(tabId)) {
+    console.log("⚠️ [Background] Audio capture already active for this tab");
+    // Still update state to ensure UI is synced
+    await updateExtensionState("active", tabId);
+    return;
+  }
+
+  try {
+    console.log("🎤 [Background] Requesting audio capture...");
+
+    const streamIdPromise = chrome.tabCapture.getMediaStreamId({
+      targetTabId: tabId,
+    });
+
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Audio capture timeout")), 5000)
+    );
+
+    const streamId = (await Promise.race([
+      streamIdPromise,
+      timeoutPromise,
+    ])) as string;
+
+    console.log("✅ [Background] Stream ID obtained");
+    activeCaptures.add(tabId);
+
+    // Update global state
+    currentCallState = {
+      isActive: true,
+      tabId: tabId,
+      userEmail: userEmail || null,
+      startTime: Date.now(),
+    };
+
+    // Immediately update state to show active
+    await updateExtensionState("active", tabId);
+
+    console.log("📄 [Background] Creating offscreen document...");
+    await createOffscreenDocument();
+
+    let retries = 3;
+    while (retries > 0) {
+      try {
+        await chrome.runtime.sendMessage({
+          type: "START_CAPTURE",
+          streamId,
+        });
+        console.log("✅ [Background] Audio capture started successfully");
+
+        // Send additional confirmation
+        chrome.runtime
+          .sendMessage({
+            type: "CALL_STARTED",
+            tabId: tabId,
+            timestamp: Date.now(),
+            status: "capturing",
+          })
+          .catch(() => {});
+
+        break;
+      } catch (error: any) {
+        retries--;
+        if (retries === 0) {
+          throw new Error(`Offscreen communication failed: ${error.message}`);
+        }
+        console.warn(`⚠️ [Background] Offscreen retry (${retries} left)`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+
+    console.log("🎉 [Background] Call coaching session started successfully");
+  } catch (error: any) {
+    console.error("❌ [Background] Call start failed:", error.message);
+    activeCaptures.delete(tabId);
+
+    // Reset global state
+    currentCallState = {
+      isActive: false,
+      tabId: null,
+      userEmail: null,
+      startTime: null,
+    };
+
+    await updateExtensionState("inactive");
+
+    chrome.runtime
+      .sendMessage({
+        type: "CALL_START_FAILED",
+        error: error.message,
+        tabId: tabId,
+      })
+      .catch(() => {});
+  }
+}
+
+async function handleCallEnd(tabId?: number) {
+  console.log(`🛑 [Background] Stopping audio capture (Tab: ${tabId})`);
+
+  if (tabId) {
+    activeCaptures.delete(tabId);
+  } else if (currentCallState.tabId) {
+    activeCaptures.delete(currentCallState.tabId);
+  }
+
+  // Reset global state
+  currentCallState = {
+    isActive: false,
+    tabId: null,
+    userEmail: null,
+    startTime: null,
+  };
+
+  await updateExtensionState("inactive", tabId);
+
+  chrome.runtime
+    .sendMessage({
+      type: "CALL_ENDED",
+      tabId: tabId,
+      timestamp: Date.now(),
+    })
+    .catch(() => {});
+
+  chrome.runtime
+    .sendMessage({
+      type: "STOP_CAPTURE",
+    })
+    .catch(() => {});
+
+  console.log("✅ [Background] Call ended processing complete");
+}
+
+async function createOffscreenDocument() {
+  try {
+    const existingContexts = await chrome.runtime.getContexts({
+      contextTypes: ["OFFSCREEN_DOCUMENT" as chrome.runtime.ContextType],
+    });
+
+    if (existingContexts.length > 0) {
+      console.log("ℹ️ [Background] Offscreen document already exists");
+      return;
+    }
+
+    const offscreenUrl = chrome.runtime.getURL("src/offscreen/offscreen.html");
+
+    await chrome.offscreen.createDocument({
+      url: offscreenUrl,
+      reasons: ["USER_MEDIA" as chrome.offscreen.Reason],
+      justification: "Audio processing for call coaching",
+    });
+
+    console.log("✅ [Background] Offscreen document created");
+  } catch (error: any) {
+    console.error("❌ [Background] Offscreen creation failed:", error.message);
+  }
+}
+
+async function generateCoachingTip(transcript: string) {
+  try {
+    console.log("🤖 [Background] Generating coaching tip...");
+
+    const settings = await chrome.storage.local.get("n8nWebhookUrl");
+    const webhookUrl = settings.n8nWebhookUrl;
+
+    if (!webhookUrl) {
+      console.warn(
+        "⚠️ [Background] n8n webhook not configured - sending test tip"
+      );
+      sendTestCoachingTip(transcript);
+      return;
+    }
+
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript,
+        timestamp: Date.now(),
+        action: "generate_coaching_tip",
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Webhook returned ${response.status}`);
+    }
+
+    const tip = await response.json();
+
+    chrome.runtime
+      .sendMessage({
+        type: "COACHING_TIP",
+        tip: tip.message || tip.tip,
+        category: tip.category || "info",
+        priority: tip.priority || "normal",
+        timestamp: Date.now(),
+      })
+      .catch(() => {});
+
+    console.log("✅ [Background] Coaching tip sent");
+  } catch (error: any) {
+    console.error(
+      "❌ [Background] Coaching tip generation failed:",
+      error.message
+    );
+  }
+}
+
+function sendTestCoachingTip(transcript: string) {
+  let tip = "Great job on the call!";
+  let category = "positive";
+
+  if (transcript.length < 20) {
+    tip =
+      "💡 Try to provide more detailed responses to help the customer better.";
+    category = "suggestion";
+  } else if (
+    transcript.toLowerCase().includes("um") ||
+    transcript.toLowerCase().includes("uh")
+  ) {
+    tip =
+      '⚠️ Minimize filler words like "um" and "uh" for clearer communication.';
+    category = "warning";
+  } else if (transcript.includes("?")) {
+    tip =
+      "❓ Good questioning! Keep asking clarifying questions to understand customer needs.";
+    category = "question";
+  }
+
+  chrome.runtime
+    .sendMessage({
+      type: "COACHING_TIP",
+      tip,
+      category,
+      priority: "normal",
+      timestamp: Date.now(),
+    })
+    .catch(() => {});
+
+  console.log("✅ [Background] Test coaching tip sent");
+}
+
+console.log("✅ [Background] Service worker initialized");

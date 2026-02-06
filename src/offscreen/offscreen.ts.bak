@@ -1,0 +1,253 @@
+import {
+  createClient,
+  LiveTranscriptionEvents,
+  LiveClient,
+} from "@deepgram/sdk";
+
+// State management
+let mediaRecorder: MediaRecorder | null = null;
+let deepgramConnection: LiveClient | null = null;
+let mediaStream: MediaStream | null = null;
+let isCapturing = false;
+
+// Message listener with comprehensive error handling
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  console.log(`📨 [Offscreen] Received message: ${message.type}`);
+
+  if (message.type === "START_CAPTURE") {
+    startCapture(message.streamId)
+      .then(() => sendResponse({ success: true }))
+      .catch((error) => {
+        console.error("❌ [Offscreen] Start capture failed:", error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // Keep channel open for async response
+  }
+
+  if (message.type === "STOP_CAPTURE") {
+    stopCapture();
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.type === "GET_CAPTURE_STATE") {
+    sendResponse({
+      isCapturing,
+      hasMediaRecorder: !!mediaRecorder,
+      hasDeepgramConnection: !!deepgramConnection,
+    });
+    return true;
+  }
+
+  return false;
+});
+
+/**
+ * Initialize and start audio capture with Deepgram transcription
+ */
+async function startCapture(streamId: string): Promise<void> {
+  // Prevent duplicate captures
+  if (isCapturing) {
+    console.warn("⚠️ [Offscreen] Capture already in progress");
+    return;
+  }
+
+  try {
+    console.log("🎬 [Offscreen] Starting capture with streamId:", streamId);
+
+    // Step 1: Get Deepgram API key
+    const { deepgramApiKey } = await chrome.storage.local.get("deepgramApiKey");
+    if (!deepgramApiKey) {
+      throw new Error("Deepgram API key not configured");
+    }
+    console.log("🔑 [Offscreen] API key retrieved");
+
+    // Step 2: Get media stream from tab
+    mediaStream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        mandatory: {
+          chromeMediaSource: "tab",
+          chromeMediaSourceId: streamId,
+        },
+      } as any,
+    });
+    console.log("🎤 [Offscreen] Media stream acquired");
+
+    // Step 3: Initialize Deepgram client
+    const deepgram = createClient(deepgramApiKey);
+    deepgramConnection = deepgram.listen.live({
+      model: "nova-2",
+      language: "en-US",
+      smart_format: true,
+      interim_results: true,
+      punctuate: true,
+      diarize: true, // Speaker detection
+      utterance_end_ms: 1000, // End utterance after 1 second of silence
+    });
+
+    // Step 4: Setup Deepgram event listeners
+    deepgramConnection.on(LiveTranscriptionEvents.Open, () => {
+      console.log("✅ [Offscreen] Deepgram connection opened");
+      chrome.runtime.sendMessage({
+        type: "DEEPGRAM_STATUS",
+        status: "connected",
+      });
+    });
+
+    deepgramConnection.on(LiveTranscriptionEvents.Transcript, (data: any) => {
+      const transcript = data.channel?.alternatives?.[0]?.transcript;
+      const isFinal = data.is_final;
+
+      if (transcript?.trim()) {
+        console.log(
+          `📝 [Offscreen] ${isFinal ? "FINAL" : "INTERIM"}: ${transcript}`
+        );
+
+        chrome.runtime.sendMessage({
+          type: "TRANSCRIPTION_UPDATE",
+          transcript,
+          isFinal,
+          timestamp: Date.now(),
+          confidence: data.channel?.alternatives?.[0]?.confidence || 0,
+        });
+      }
+    });
+
+    deepgramConnection.on(LiveTranscriptionEvents.Error, (error: any) => {
+      console.error("❌ [Offscreen] Deepgram error:", error);
+      chrome.runtime.sendMessage({
+        type: "DEEPGRAM_STATUS",
+        status: "error",
+        error: error.message || "Unknown Deepgram error",
+      });
+    });
+
+    deepgramConnection.on(LiveTranscriptionEvents.Close, () => {
+      console.log("🔌 [Offscreen] Deepgram connection closed");
+      chrome.runtime.sendMessage({
+        type: "DEEPGRAM_STATUS",
+        status: "disconnected",
+      });
+    });
+
+    deepgramConnection.on(LiveTranscriptionEvents.Metadata, (data: any) => {
+      console.log("📊 [Offscreen] Deepgram metadata:", data);
+    });
+
+    // Step 5: Setup MediaRecorder
+    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      ? "audio/webm;codecs=opus"
+      : "audio/webm";
+
+    mediaRecorder = new MediaRecorder(mediaStream, {
+      mimeType,
+      audioBitsPerSecond: 16000, // Optimize for speech
+    });
+
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0 && deepgramConnection) {
+        deepgramConnection.send(event.data);
+        console.log(`📤 [Offscreen] Sent ${event.data.size} bytes to Deepgram`);
+      }
+    };
+
+    mediaRecorder.onerror = (event) => {
+      console.error("❌ [Offscreen] MediaRecorder error:", event);
+      chrome.runtime.sendMessage({
+        type: "CAPTURE_ERROR",
+        error: "MediaRecorder error occurred",
+      });
+    };
+
+    mediaRecorder.onstop = () => {
+      console.log("🛑 [Offscreen] MediaRecorder stopped");
+    };
+
+    // Step 6: Start recording in chunks (250ms intervals)
+    mediaRecorder.start(250);
+    isCapturing = true;
+
+    console.log("✅ [Offscreen] Audio capture and Deepgram streaming started");
+    console.log(`   - MIME type: ${mimeType}`);
+    console.log(`   - Sample interval: 250ms`);
+    console.log(`   - Model: nova-2`);
+
+    // Notify background script
+    chrome.runtime.sendMessage({
+      type: "CAPTURE_STARTED",
+      success: true,
+    });
+  } catch (error) {
+    console.error("❌ [Offscreen] Start capture failed:", error);
+
+    // Cleanup on error
+    await cleanupResources();
+
+    chrome.runtime.sendMessage({
+      type: "CAPTURE_ERROR",
+      error: error instanceof Error ? error.message : "Unknown error",
+    });
+
+    throw error;
+  }
+}
+
+/**
+ * Stop audio capture and cleanup resources
+ */
+function stopCapture(): void {
+  console.log("🛑 [Offscreen] Stopping capture");
+
+  cleanupResources();
+
+  chrome.runtime.sendMessage({
+    type: "CAPTURE_STOPPED",
+    success: true,
+  });
+}
+
+/**
+ * Cleanup all resources (MediaRecorder, Deepgram connection, MediaStream)
+ */
+async function cleanupResources(): Promise<void> {
+  // Stop MediaRecorder
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+    console.log("✅ [Offscreen] MediaRecorder stopped");
+  }
+  mediaRecorder = null;
+
+  // Close Deepgram connection
+  if (deepgramConnection) {
+    try {
+      deepgramConnection.finish();
+      console.log("✅ [Offscreen] Deepgram connection finished");
+    } catch (error) {
+      console.error("⚠️ [Offscreen] Error closing Deepgram:", error);
+    }
+    deepgramConnection = null;
+  }
+
+  // Stop all media tracks
+  if (mediaStream) {
+    mediaStream.getTracks().forEach((track) => {
+      track.stop();
+      console.log(`✅ [Offscreen] Stopped track: ${track.kind}`);
+    });
+    mediaStream = null;
+  }
+
+  isCapturing = false;
+  console.log("✅ [Offscreen] All resources cleaned up");
+}
+
+/**
+ * Cleanup on page unload
+ */
+window.addEventListener("beforeunload", () => {
+  console.log("🔄 [Offscreen] Page unloading, cleaning up resources");
+  cleanupResources();
+});
+
+// Log initialization
+console.log("🚀 [Offscreen] Document initialized and ready");

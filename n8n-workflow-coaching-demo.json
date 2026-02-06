@@ -1,0 +1,157 @@
+{
+  "name": "Call Coach - AI Coaching Workflow (Demo)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "coaching",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "coaching"
+    },
+    {
+      "parameters": {
+        "functionCode": "// Extract data from webhook\nconst transcript = $input.item.json.body.transcript;\nconst speaker = $input.item.json.body.speaker;\nconst timestamp = $input.item.json.body.timestamp;\nconst conversationHistory = $input.item.json.body.conversationHistory || [];\n\n// Build context from conversation history\nlet contextText = \"\";\nif (conversationHistory.length > 0) {\n  contextText = \"Recent conversation:\\n\";\n  conversationHistory.slice(-5).forEach(entry => {\n    contextText += `${entry.speaker}: ${entry.text}\\n`;\n  });\n}\n\n// Prepare data for OpenAI\nreturn {\n  json: {\n    transcript,\n    speaker,\n    timestamp,\n    conversationHistory,\n    contextText,\n    currentMessage: `${speaker}: ${transcript}`\n  }\n};"
+      },
+      "id": "function-prepare-data",
+      "name": "Prepare Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "resource": "chat",
+        "operation": "complete",
+        "model": "gpt-3.5-turbo",
+        "messages": {
+          "values": [
+            {
+              "role": "system",
+              "content": "You are an expert sales coaching AI assistant. Your role is to analyze sales conversations in real-time and provide actionable coaching to sales agents.\n\nFor each message from the conversation, you should:\n1. Analyze what the prospect is indicating (objection, interest, question, positive signal, etc.)\n2. Provide 2-3 specific response suggestions the agent can use\n3. Be concise and actionable - agents need quick tips during live calls\n4. Focus on sales best practices and objection handling\n\nRespond in this JSON format:\n{\n  \"analysis\": \"Brief analysis of what the prospect is indicating\",\n  \"suggestions\": [\n    \"Specific suggestion 1 the agent can say\",\n    \"Specific suggestion 2 the agent can say\",\n    \"Specific suggestion 3 the agent can say\"\n  ],\n  \"priority\": \"normal\" or \"high\",\n  \"category\": \"objection\" or \"interest\" or \"question\" or \"closing\" or \"info\"\n}\n\nIf the speaker is the agent (not prospect), analyze their performance briefly and provide encouragement or gentle corrections."
+            },
+            {
+              "role": "user",
+              "content": "={{ $json.contextText }}\\n\\nLatest message: {{ $json.currentMessage }}\\n\\nProvide coaching for this sales interaction."
+            }
+          ]
+        },
+        "options": {
+          "temperature": 0.7,
+          "maxTokens": 300
+        }
+      },
+      "id": "openai-coaching",
+      "name": "OpenAI - Generate Coaching",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1,
+      "position": [650, 300],
+      "credentials": {
+        "openAiApi": {
+          "id": "YOUR_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// Parse OpenAI response\nconst openaiResponse = $input.item.json.choices[0].message.content;\n\n// Try to parse as JSON\nlet coaching;\ntry {\n  coaching = JSON.parse(openaiResponse);\n} catch (error) {\n  // If not valid JSON, create a simple response\n  coaching = {\n    analysis: \"AI analysis in progress\",\n    suggestions: [openaiResponse],\n    priority: \"normal\",\n    category: \"info\"\n  };\n}\n\n// Return formatted response for extension\nreturn {\n  json: {\n    success: true,\n    coaching: {\n      analysis: coaching.analysis || \"Analysis not available\",\n      suggestions: coaching.suggestions || [],\n      priority: coaching.priority || \"normal\",\n      category: coaching.category || \"suggestion\",\n      timestamp: Date.now()\n    }\n  }\n};"
+      },
+      "id": "function-format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}"
+      },
+      "id": "respond-to-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "// Log error for debugging\nconst error = $input.item.json.error || 'Unknown error';\n\nconsole.log('Coaching AI Error:', error);\n\n// Return fallback response\nreturn {\n  json: {\n    success: false,\n    coaching: {\n      analysis: \"AI coaching temporarily unavailable\",\n      suggestions: [\n        \"Continue with your current approach\",\n        \"Listen actively to the prospect's needs\",\n        \"Build rapport and trust\"\n      ],\n      priority: \"normal\",\n      category: \"info\",\n      timestamp: Date.now()\n    },\n    error: error\n  }\n};"
+      },
+      "id": "function-error-handler",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Prepare Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Data": {
+      "main": [
+        [
+          {
+            "node": "OpenAI - Generate Coaching",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI - Generate Coaching": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2025-01-07T00:00:00.000Z",
+  "versionId": "1"
+}
