@@ -326,7 +326,7 @@ chrome.runtime.onStartup.addListener(() => {
   startKeepAlive()
 
   // Restore state from storage
-  chrome.storage.local.get(['userEmail', 'isAuthenticated']).then(data => {
+  chrome.storage.local.get(['userEmail', 'isAuthenticated']).then((data: { userEmail?: string; isAuthenticated?: boolean }) => {
     if (data.userEmail) {
       extensionState.userEmail = data.userEmail
       extensionState.isAuthenticated = data.isAuthenticated || false
@@ -342,7 +342,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   if (areaName === 'local') {
     if (changes.userEmail) {
       console.log('⚙️ [Background] User email changed:', changes.userEmail.newValue)
-      extensionState.userEmail = changes.userEmail.newValue
+      extensionState.userEmail = changes.userEmail.newValue as string | null
       extensionState.isAuthenticated = !!changes.userEmail.newValue
     }
   }

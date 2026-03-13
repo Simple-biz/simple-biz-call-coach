@@ -46,7 +46,7 @@ class AICoachingService {
       const settings = await chrome.storage.local.get([
         'aiCoachingEnabled',
         'n8nWebhookUrl',
-      ])
+      ]) as { aiCoachingEnabled?: boolean; n8nWebhookUrl?: string }
 
       this.config = {
         enabled: settings.aiCoachingEnabled ?? false,
@@ -55,7 +55,7 @@ class AICoachingService {
       }
 
       console.log(
-        `🤖 [AI Coaching] Initialized - Enabled: ${this.config.enabled}, Webhook: ${this.config.webhookUrl ? 'configured' : 'not configured'}`
+        `🤖 [AI Coaching] Initialized - Enabled: ${this.config!.enabled}, Webhook: ${this.config!.webhookUrl ? 'configured' : 'not configured'}`
       )
     } catch (error) {
       console.error('❌ [AI Coaching] Failed to initialize:', error)

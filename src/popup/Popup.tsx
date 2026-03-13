@@ -16,7 +16,7 @@ export default function Popup() {
   const [developerModeEnabled, setDeveloperModeEnabled] = useState(false)
 
   useEffect(() => {
-    chrome.storage.local.get(['userEmail', 'userCcEmail', 'developerModeEnabled'], result => {
+    chrome.storage.local.get(['userEmail', 'userCcEmail', 'developerModeEnabled'], (result: { userEmail?: string; userCcEmail?: string; developerModeEnabled?: boolean }) => {
       setUserEmail(result.userEmail || null)
       setUserCcEmail(result.userCcEmail || null) // Load CC
       setDeveloperModeEnabled(result.developerModeEnabled || false)
@@ -44,7 +44,7 @@ export default function Popup() {
       setIsCheckingTab(false)
     })
 
-    chrome.storage.local.get(['hasUsedBefore'], result => {
+    chrome.storage.local.get(['hasUsedBefore'], (result: { hasUsedBefore?: boolean }) => {
       setHasUsedBefore(result.hasUsedBefore || false)
     })
   }, [])
