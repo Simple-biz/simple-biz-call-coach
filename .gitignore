@@ -29,5 +29,8 @@ npm-debug.log*
 .cache/
 .chrome-dev-profile/
 
-# Claude Code local settings (personal, not committed)
-.claude/settings.local.json
+# Claude Code / god-mode (local only, never commit)
+.claude/
+.bmad/
+bmad-custom-src/
+._*
