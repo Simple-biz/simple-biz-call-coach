@@ -105,12 +105,9 @@ export default function Popup() {
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
 
-  const handleLogin = (email: string, ccEmail?: string, deepgramKey?: string) => {
-    const storageData: Record<string, string | undefined> = { userEmail: email, userCcEmail: ccEmail }
-    if (deepgramKey) {
-      storageData.deepgramApiKey = deepgramKey
-    }
-    chrome.storage.local.set(storageData, () => {
+  const handleLogin = (email: string, ccEmail?: string) => {
+    const envKey = import.meta.env.VITE_DEEPGRAM_API_KEY || ''
+    chrome.storage.local.set({ userEmail: email, userCcEmail: ccEmail, deepgramApiKey: envKey }, () => {
       setUserEmail(email)
       setUserCcEmail(ccEmail || null)
       console.log('✅ [Popup] User logged in:', email, 'CC:', ccEmail)
