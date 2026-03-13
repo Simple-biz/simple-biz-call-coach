@@ -9,41 +9,67 @@ const CALLTOOLS_WEBHOOK_SECRET = process.env.CALLTOOLS_WEBHOOK_SECRET!;
 const WEBSOCKET_API_DOMAIN = process.env.WEBSOCKET_API_DOMAIN!;
 const WEBSOCKET_API_STAGE = process.env.WEBSOCKET_API_STAGE || 'production';
 
-// Valid event types from CallTools
-const VALID_EVENTS = ['call.started', 'call.ended'] as const;
-type CallToolsEventType = typeof VALID_EVENTS[number];
+/**
+ * CallTools resthook "Call" payload — matches the GET /api/calls/ format.
+ * Webhook fires on call creation (when the call record is written).
+ */
+export interface CallToolsCallPayload {
+  id: number;
+  uuid: string;
+  account_id: number;
+  contact: number | null;
+  app_user: string | null;           // Agent UUID in CallTools
+  campaign: number | null;
+  system_disposition: string | null;
+  call_disposition: number | null;
+  destination: string;
+  source: string;
+  inbound: boolean;
+  start: string;                     // ISO 8601 e.g. "2025-12-12T13:01:07Z"
+  end: string | null;
+  call_type: string;                 // "outbound", "inbound", "async-outbound"
+  duration: number;
+  billsec: number;
+  transferred_to: string | null;
+  call_recording_fsfile_id: number | null;
+  created_on: string;
+  [key: string]: any;                // Future-proof for extra fields
+}
 
-export interface CallToolsWebhookPayload {
-  event: CallToolsEventType;
-  callId: string;
-  agentId: string;
-  timestamp: number;
-  metadata?: {
-    phoneNumber?: string;
-    campaign?: string;
-    [key: string]: any;
-  };
+/**
+ * Determines if a CallTools payload represents a "call started" or "call ended" event.
+ * - If `end` is null and `duration` is 0 → call.started
+ * - If `end` is set → call.ended
+ * CallTools "Call" resthook fires on call creation, so both are possible.
+ */
+function classifyEvent(payload: CallToolsCallPayload): 'call.started' | 'call.ended' {
+  if (payload.end && payload.duration > 0) {
+    return 'call.ended';
+  }
+  return 'call.started';
 }
 
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const startTime = Date.now();
-  console.log('[Webhook] Received call event webhook');
+  console.log('[Webhook] Received CallTools webhook');
 
-  // 1. Validate Authorization header
+  // 1. Validate webhook secret (query param or Authorization header)
+  // CallTools doesn't send Bearer auth — we validate via a secret query param on the URL
+  // e.g. https://your-lambda-url/?secret=your-secret
+  const querySecret = event.queryStringParameters?.['secret'];
   const authHeader = event.headers?.['Authorization'] || event.headers?.['authorization'];
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.warn('[Webhook] Missing or malformed Authorization header');
-    return response(401, { error: 'Unauthorized' });
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (CALLTOOLS_WEBHOOK_SECRET) {
+    const providedSecret = querySecret || bearerToken;
+    if (!providedSecret || providedSecret !== CALLTOOLS_WEBHOOK_SECRET) {
+      console.warn('[Webhook] Invalid or missing webhook secret');
+      return response(401, { error: 'Unauthorized' });
+    }
   }
 
-  const token = authHeader.slice(7);
-  if (token !== CALLTOOLS_WEBHOOK_SECRET) {
-    console.warn('[Webhook] Invalid webhook secret');
-    return response(401, { error: 'Unauthorized' });
-  }
-
-  // 2. Parse and validate payload
-  let payload: CallToolsWebhookPayload;
+  // 2. Parse payload
+  let payload: CallToolsCallPayload;
   try {
     payload = JSON.parse(event.body || '{}');
   } catch {
@@ -51,29 +77,34 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: 'Invalid JSON body' });
   }
 
+  // 3. Validate required fields
   const validationError = validatePayload(payload);
   if (validationError) {
     console.warn('[Webhook] Validation failed:', validationError);
     return response(400, { error: validationError });
   }
 
-  console.log(`[Webhook] Processing ${payload.event} for agent ${payload.agentId}, call ${payload.callId}`);
+  const eventType = classifyEvent(payload);
+  const callId = payload.uuid;
+  const agentId = payload.app_user || 'unknown';
 
-  // 3. Idempotency check — skip if this exact event was already processed
-  const alreadyProcessed = await checkIdempotency(payload.callId, payload.event);
+  console.log(`[Webhook] Processing ${eventType} for agent ${agentId}, call ${callId}`);
+
+  // 4. Idempotency check
+  const alreadyProcessed = await checkIdempotency(callId, eventType);
   if (alreadyProcessed) {
-    console.log(`[Webhook] Duplicate event skipped: ${payload.callId}/${payload.event}`);
-    return response(200, { message: 'Event already processed', callId: payload.callId });
+    console.log(`[Webhook] Duplicate event skipped: ${callId}/${eventType}`);
+    return response(200, { message: 'Event already processed', callId });
   }
 
-  // 4. Store event in DynamoDB
-  await storeCallEvent(payload);
+  // 5. Store event in DynamoDB
+  await storeCallEvent(callId, eventType, agentId, payload);
 
-  // 5. Look up connected extensions for this agentId and broadcast
-  const broadcastCount = await broadcastToAgent(payload);
+  // 6. Broadcast to connected extensions
+  const broadcastCount = await broadcastToAgent(agentId, eventType, callId, payload);
 
   const latencyMs = Date.now() - startTime;
-  console.log(`[Webhook] Processed ${payload.event} in ${latencyMs}ms, broadcast to ${broadcastCount} connection(s)`);
+  console.log(`[Webhook] Processed ${eventType} in ${latencyMs}ms, broadcast to ${broadcastCount} connection(s)`);
 
   if (latencyMs > 300) {
     console.warn(`[Webhook] Latency exceeded 300ms target: ${latencyMs}ms`);
@@ -81,72 +112,85 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   return response(200, {
     message: 'Event processed',
-    callId: payload.callId,
+    callId,
+    eventType,
     broadcastCount,
     latencyMs,
   });
 }
 
 function validatePayload(payload: any): string | null {
-  if (!payload.event || !VALID_EVENTS.includes(payload.event)) {
-    return `Invalid event type. Expected one of: ${VALID_EVENTS.join(', ')}`;
+  if (!payload.uuid || typeof payload.uuid !== 'string') {
+    return 'Missing or invalid uuid';
   }
-  if (!payload.callId || typeof payload.callId !== 'string') {
-    return 'Missing or invalid callId';
+  if (payload.id === undefined || typeof payload.id !== 'number') {
+    return 'Missing or invalid id';
   }
-  if (!payload.agentId || typeof payload.agentId !== 'string') {
-    return 'Missing or invalid agentId';
-  }
-  if (!payload.timestamp || typeof payload.timestamp !== 'number') {
-    return 'Missing or invalid timestamp';
+  if (!payload.start || typeof payload.start !== 'string') {
+    return 'Missing or invalid start time';
   }
   return null;
 }
 
-async function checkIdempotency(callId: string, event: string): Promise<boolean> {
+async function checkIdempotency(callId: string, eventType: string): Promise<boolean> {
   try {
     const result = await dynamoClient.send(new GetItemCommand({
       TableName: CALL_EVENTS_TABLE,
       Key: {
         callId: { S: callId },
-        event: { S: event },
+        event: { S: eventType },
       },
     }));
     return !!result.Item;
   } catch (error) {
     console.error('[Webhook] Idempotency check failed:', error);
-    // On error, proceed with processing (safe — storeCallEvent uses conditional put)
     return false;
   }
 }
 
-async function storeCallEvent(payload: CallToolsWebhookPayload): Promise<void> {
+async function storeCallEvent(
+  callId: string,
+  eventType: string,
+  agentId: string,
+  payload: CallToolsCallPayload
+): Promise<void> {
   const ttl = Math.floor(Date.now() / 1000) + 86400; // 24 hours
+  const timestamp = new Date(payload.start).getTime();
 
   const item: Record<string, any> = {
-    callId: { S: payload.callId },
-    event: { S: payload.event },
-    agentId: { S: payload.agentId },
-    timestamp: { N: payload.timestamp.toString() },
+    callId: { S: callId },
+    event: { S: eventType },
+    agentId: { S: agentId },
+    timestamp: { N: timestamp.toString() },
     ttl: { N: ttl.toString() },
+    callToolsId: { N: payload.id.toString() },
+    destination: { S: payload.destination },
+    source: { S: payload.source },
+    callType: { S: payload.call_type },
+    inbound: { BOOL: payload.inbound },
   };
 
-  if (payload.metadata) {
-    item.metadata = { S: JSON.stringify(payload.metadata) };
+  if (payload.duration) {
+    item.duration = { N: payload.duration.toString() };
+  }
+  if (payload.campaign) {
+    item.campaignId = { N: payload.campaign.toString() };
+  }
+  if (payload.system_disposition) {
+    item.systemDisposition = { S: payload.system_disposition };
   }
 
   try {
     await dynamoClient.send(new PutItemCommand({
       TableName: CALL_EVENTS_TABLE,
       Item: item,
-      // Conditional put for idempotency — won't overwrite existing
       ConditionExpression: 'attribute_not_exists(callId) AND attribute_not_exists(#evt)',
       ExpressionAttributeNames: { '#evt': 'event' },
     }));
-    console.log(`[Webhook] Event stored: ${payload.callId}/${payload.event}`);
+    console.log(`[Webhook] Event stored: ${callId}/${eventType}`);
   } catch (error: any) {
     if (error.name === 'ConditionalCheckFailedException') {
-      console.log(`[Webhook] Event already exists (conditional put): ${payload.callId}/${payload.event}`);
+      console.log(`[Webhook] Event already exists (conditional put): ${callId}/${eventType}`);
       return;
     }
     console.error('[Webhook] Error storing event:', error);
@@ -154,7 +198,12 @@ async function storeCallEvent(payload: CallToolsWebhookPayload): Promise<void> {
   }
 }
 
-async function broadcastToAgent(payload: CallToolsWebhookPayload): Promise<number> {
+async function broadcastToAgent(
+  agentId: string,
+  eventType: string,
+  callId: string,
+  payload: CallToolsCallPayload
+): Promise<number> {
   // Query connections by agentId using GSI
   let connectionIds: string[];
   try {
@@ -163,7 +212,7 @@ async function broadcastToAgent(payload: CallToolsWebhookPayload): Promise<numbe
       IndexName: 'agentId-index',
       KeyConditionExpression: 'agentId = :agentId',
       ExpressionAttributeValues: {
-        ':agentId': { S: payload.agentId },
+        ':agentId': { S: agentId },
       },
     }));
 
@@ -176,23 +225,28 @@ async function broadcastToAgent(payload: CallToolsWebhookPayload): Promise<numbe
   }
 
   if (connectionIds.length === 0) {
-    console.log(`[Webhook] No connected extensions for agent ${payload.agentId}`);
+    console.log(`[Webhook] No connected extensions for agent ${agentId}`);
     return 0;
   }
 
-  console.log(`[Webhook] Found ${connectionIds.length} connection(s) for agent ${payload.agentId}`);
+  console.log(`[Webhook] Found ${connectionIds.length} connection(s) for agent ${agentId}`);
 
-  // Map CallTools event to extension message type
-  const messageType = payload.event === 'call.started' ? 'CALL_STARTED' : 'CALL_ENDED';
+  const messageType = eventType === 'call.started' ? 'CALL_STARTED' : 'CALL_ENDED';
 
   const message: WebSocketMessage = {
     type: 'STATUS_UPDATE',
     payload: {
       event: messageType,
-      callId: payload.callId,
-      agentId: payload.agentId,
-      timestamp: payload.timestamp,
-      metadata: payload.metadata,
+      callId,
+      agentId,
+      destination: payload.destination,
+      source: payload.source,
+      callType: payload.call_type,
+      inbound: payload.inbound,
+      start: payload.start,
+      end: payload.end,
+      duration: payload.duration,
+      campaign: payload.campaign,
     },
   };
 
