@@ -106,12 +106,10 @@ export default function Popup() {
   }, [])
 
   const handleLogin = (email: string, ccEmail?: string) => {
-    chrome.storage.local.set({ userEmail: email, userCcEmail: ccEmail }, () => {
+    const envKey = import.meta.env.VITE_DEEPGRAM_API_KEY || ''
+    chrome.storage.local.set({ userEmail: email, userCcEmail: ccEmail, deepgramApiKey: envKey }, () => {
       setUserEmail(email)
       setUserCcEmail(ccEmail || null)
-      chrome.storage.local.set({
-        deepgramApiKey: 'e06e624c52e5974a4e5162b3c93306ecdda52bc9',
-      })
       console.log('✅ [Popup] User logged in:', email, 'CC:', ccEmail)
     })
   }

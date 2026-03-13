@@ -7,7 +7,7 @@ interface LoginProps {
 
 export default function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState("");
-  const [ccEmail, setCcEmail] = useState(""); // Added state
+  const [ccEmail, setCcEmail] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = () => {

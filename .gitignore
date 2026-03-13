@@ -9,6 +9,7 @@ build/
 # Environment variables
 .env
 .env.local
+.env.production
 
 # IDE
 .vscode/
@@ -26,6 +27,8 @@ npm-debug.log*
 
 # Temporary files
 *.tmp
+*.backup
+*.bak
 .cache/
 .chrome-dev-profile/
 

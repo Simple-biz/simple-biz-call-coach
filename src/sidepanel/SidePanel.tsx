@@ -62,11 +62,15 @@ export default function SidePanel() {
         useSettingsStore.getState().setDeepgramApiKey(result.deepgramApiKey);
         console.log("🔑 [SidePanel] Deepgram API key loaded from storage");
       } else {
-        // Fallback for existing sessions (hardcode the demo key)
-        const DEMO_KEY = 'e06e624c52e5974a4e5162b3c93306ecdda52bc9';
-        chrome.storage.local.set({ deepgramApiKey: DEMO_KEY });
-        useSettingsStore.getState().setDeepgramApiKey(DEMO_KEY);
-        console.log("🔑 [SidePanel] Deepgram API key missing, injected demo key");
+        // Fallback: read from env var
+        const envKey = import.meta.env.VITE_DEEPGRAM_API_KEY || '';
+        if (envKey) {
+          chrome.storage.local.set({ deepgramApiKey: envKey });
+          useSettingsStore.getState().setDeepgramApiKey(envKey);
+          console.log("🔑 [SidePanel] Deepgram API key loaded from environment");
+        } else {
+          console.warn("⚠️ [SidePanel] No Deepgram API key found. Set VITE_DEEPGRAM_API_KEY in .env.production.");
+        }
       }
     });
 
