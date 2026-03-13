@@ -50,7 +50,7 @@ export default function SidePanel() {
     console.log("📂 [SidePanel] Loading state from storage");
 
     // Load Developer Mode setting from storage and sync with environment
-    chrome.storage.local.get(['developerModeEnabled', 'deepgramApiKey'], (result) => {
+    chrome.storage.local.get(['developerModeEnabled', 'deepgramApiKey'], (result: { developerModeEnabled?: boolean; deepgramApiKey?: string }) => {
       if (result.developerModeEnabled !== undefined) {
         const env = result.developerModeEnabled ? 'sandbox' : 'production';
         useCallStore.getState().setEnvironment(env);

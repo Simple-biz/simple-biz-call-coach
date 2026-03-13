@@ -71,6 +71,24 @@ interface CallStore {
   setCurrentScriptOptions: (options: ScriptOption[]) => void;
 }
 
+// Shape of state persisted to chrome.storage.local under "callStoreState"
+interface PersistedCallState {
+  session: CallSession | null;
+  callState: CallState;
+  audioState: AudioState;
+  transcriptions: Transcription[];
+  coachingTips: CoachingTip[];
+  deepgramStatus: "disconnected" | "connected" | "error";
+  aiBackendStatus: AIBackendStatus;
+  aiTips: AIRecommendation[];
+  aiConversationId: string | null;
+  lastAIUpdate: number | null;
+  intelligence: ConversationIntelligence | null;
+  entities: ExtractedEntities | null;
+  environment: 'sandbox' | 'production';
+  websocketUrl: string;
+}
+
 // WebSocket URL constants
 const PRODUCTION_WS_URL = import.meta.env.VITE_WS_URL || 'wss://your-api-gateway.execute-api.us-east-1.amazonaws.com/prod';
 const SANDBOX_WS_URL = 'ws://localhost:8080';
@@ -205,7 +223,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   loadFromStorage: async () => {
     try {
-      const result = await chrome.storage.local.get("callStoreState");
+      const result = await chrome.storage.local.get("callStoreState") as { callStoreState?: PersistedCallState };
       if (result.callStoreState) {
         const savedState = result.callStoreState;
         set({
@@ -371,7 +389,7 @@ function persistState(state: Partial<CallStore>) {
 
 // Initialize store from storage when module loads
 if (typeof chrome !== "undefined" && chrome.storage) {
-  chrome.storage.local.get("callStoreState", (result) => {
+  chrome.storage.local.get("callStoreState", (result: { callStoreState?: PersistedCallState }) => {
     if (result.callStoreState) {
       useCallStore.setState({
         session: result.callStoreState.session,
