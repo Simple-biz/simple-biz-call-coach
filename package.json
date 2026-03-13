@@ -27,8 +27,7 @@
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.2.1",
-    "@seontechnologies/playwright-utils": "^3.10.1",
-    "@tailwindcss/postcss": "^4.1.16",
+"@tailwindcss/postcss": "^4.1.16",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
