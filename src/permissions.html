@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Simple.Biz Call Coach - Permissions</title>
+  <style>
+    body { font-family: system-ui; background: #1a1a2e; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+    .card { background: #16213e; border-radius: 12px; padding: 40px; text-align: center; max-width: 400px; }
+    h1 { font-size: 20px; margin-bottom: 8px; }
+    p { color: #94a3b8; font-size: 14px; margin-bottom: 24px; }
+    button { background: #7c3aed; color: white; border: none; padding: 12px 32px; border-radius: 8px; font-size: 16px; cursor: pointer; }
+    button:hover { background: #6d28d9; }
+    #status { margin-top: 16px; font-size: 14px; }
+    .success { color: #4ade80; }
+    .error { color: #f87171; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Microphone Permission</h1>
+    <p>Call Coach needs microphone access to capture your voice during calls. Click below to grant permission.</p>
+    <button id="grant">Grant Microphone Access</button>
+    <div id="status"></div>
+  </div>
+  <script type="module" src="./permissions.ts"></script>
+</body>
+</html>

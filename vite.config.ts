@@ -70,6 +70,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         offscreen: path.resolve(__dirname, "src/offscreen/offscreen.html"),
+        permissions: path.resolve(__dirname, "src/permissions.html"),
       },
     },
   },

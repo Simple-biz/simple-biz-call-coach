@@ -178,8 +178,12 @@ async function startDualStreamCapture(streamId: string, apiKey: string) {
         await connectDeepgramSockets()
         isCapturing = true
 
-    } catch (err) {
+    } catch (err: any) {
         logger.error('❌ Failed to start Dual Stream Capture:', err)
+        chrome.runtime.sendMessage({
+            type: 'CAPTURE_ERROR',
+            error: err?.message || String(err)
+        }).catch(() => {})
         stopDualStreamCapture()
         throw err;
     }
