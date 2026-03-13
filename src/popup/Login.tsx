@@ -1,21 +1,29 @@
 import { useState } from "react";
-import { Phone, Mail, ArrowRight } from "lucide-react";
+import { Phone, Mail, ArrowRight, Key } from "lucide-react";
 
 interface LoginProps {
-  onLogin: (email: string, ccEmail?: string) => void;
+  onLogin: (email: string, ccEmail?: string, deepgramKey?: string) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
   const [email, setEmail] = useState("");
-  const [ccEmail, setCcEmail] = useState(""); // Added state
+  const [ccEmail, setCcEmail] = useState("");
+  const [deepgramKey, setDeepgramKey] = useState("");
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const handleLogin = () => {
     const trimmedEmail = email.trim();
     const trimmedCcEmail = ccEmail.trim();
 
+    const trimmedDeepgramKey = deepgramKey.trim();
+
     if (!trimmedEmail) {
       alert("Please enter your email");
+      return;
+    }
+
+    if (!trimmedDeepgramKey) {
+      alert("Please enter your Deepgram API key");
       return;
     }
 
@@ -36,7 +44,7 @@ export default function Login({ onLogin }: LoginProps) {
 
     // Save email and proceed
     setTimeout(() => {
-      onLogin(trimmedEmail, trimmedCcEmail || undefined);
+      onLogin(trimmedEmail, trimmedCcEmail || undefined, trimmedDeepgramKey);
     }, 500);
   };
 
@@ -96,12 +104,28 @@ export default function Login({ onLogin }: LoginProps) {
             />
           </div>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1.5">Deepgram API Key</label>
+          <div className="relative">
+            <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="password"
+              value={deepgramKey}
+              onChange={(e) => setDeepgramKey(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Enter your Deepgram API key"
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 text-sm focus:outline-none focus:border-purple-500 transition-colors"
+              disabled={isLoggingIn}
+            />
+          </div>
+        </div>
       </div>
 
       {/* Login Button */}
       <button
         onClick={handleLogin}
-        disabled={isLoggingIn || !email.trim()}
+        disabled={isLoggingIn || !email.trim() || !deepgramKey.trim()}
         className="w-full py-3 px-4 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-600 disabled:to-gray-600 text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-lg disabled:cursor-not-allowed"
       >
         {isLoggingIn ? (

@@ -105,13 +105,14 @@ export default function Popup() {
     return () => chrome.runtime.onMessage.removeListener(handleMessage)
   }, [])
 
-  const handleLogin = (email: string, ccEmail?: string) => {
-    chrome.storage.local.set({ userEmail: email, userCcEmail: ccEmail }, () => {
+  const handleLogin = (email: string, ccEmail?: string, deepgramKey?: string) => {
+    const storageData: Record<string, string | undefined> = { userEmail: email, userCcEmail: ccEmail }
+    if (deepgramKey) {
+      storageData.deepgramApiKey = deepgramKey
+    }
+    chrome.storage.local.set(storageData, () => {
       setUserEmail(email)
       setUserCcEmail(ccEmail || null)
-      chrome.storage.local.set({
-        deepgramApiKey: 'e06e624c52e5974a4e5162b3c93306ecdda52bc9',
-      })
       console.log('✅ [Popup] User logged in:', email, 'CC:', ccEmail)
     })
   }
