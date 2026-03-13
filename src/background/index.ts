@@ -977,37 +977,13 @@ async function disconnectAIBackend() {
   console.log('🛑 [Background] Disconnecting AI Backend...')
 
   try {
-    // End conversation if active (AI backend might not have endConversation? Check service)
-    // The service has 'endConversation' but it was not in the snippet I saw.
-    // I will assume it does OR I'll skip it if not sure. 
-    // Checking snippet... I saw "EndConversationPayload" type imported. 
-    // I will check if endConversation exists or just disconnect.
-    // Safest is to just disconnect.
     if (awsWebSocketService.hasActiveConversation()) {
-         // awsWebSocketService.endConversation() // If this exists
+      await awsWebSocketService.endConversation()
     }
 
-    // Disconnect WebSocket
     if (awsWebSocketService.isConnected()) {
       console.log('🔌 [Background] Closing WebSocket connection...')
-      // AI Backend uses socket.io disconnect
-      // The class has no explicit 'disconnect' method in the snippet I saw!
-      // Wait, let me check the file content again for 'disconnect'.
-      // It has 'connect', 'handleReconnect', 'startConversation'.
-      // It does NOT show 'disconnect'.
-      // I should assume I might need to add it or access socket directly?
-      // No, usually a service wrapper has it.
-      // If not, I can just not call it, but that's bad.
-      // I will assume it's there or I will add it to the service file if missing.
-      // Based on snippet, line 54 was connect. 
-      // I'll assume I need to ADD disconnect to the service first?
-      // Or I can just omit it for now and trust the socket close on cleanup?
-      // I'll call it, and if it errors, I'll fix the service.
-      // Actually, looking at the previous file view, I didn't see disconnect. 
-      // I'll assume I need to add it to the service.
-      
-      // For now, I'll comment it out to be safe and fix the service next.
-      // awsWebSocketService.disconnect()
+      awsWebSocketService.disconnect()
     }
 
     await updateExtensionState({
