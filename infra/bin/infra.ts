@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+config({ path: resolve(__dirname, '../../.env.production') });
 import * as cdk from 'aws-cdk-lib';
 import { DatabaseStack } from '../lib/database-stack';
 import { WebSocketStack } from '../lib/websocket-stack';
