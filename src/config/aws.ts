@@ -17,5 +17,8 @@ export const BACKEND_API_KEY = 'j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=';
 export const IS_PRODUCTION = AWS_WEBSOCKET_URL.includes('amazonaws.com');
 export const ENVIRONMENT = IS_PRODUCTION ? 'PROD' : 'DEV';
 
+// Feature flags
+export const WEBHOOK_ENABLED = import.meta.env.VITE_WEBHOOK_ENABLED === 'true';
+
 // CloudWatch Dashboard URL
 export const CLOUDWATCH_DASHBOARD_URL = 'https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=DevAssist-WebSocket-Monitoring';

@@ -61,6 +61,8 @@ interface ExtensionState {
   remoteStreamActive?: boolean
   localStreamActive?: boolean
   conversationId?: string | null
+  callToolsCallId?: string | null
+  callDetectionSource?: 'webhook' | 'dom' | null
 }
 
 // ============================================================================
@@ -83,6 +85,8 @@ let extensionState: ExtensionState = {
   remoteStreamActive: false,
   localStreamActive: false,
   conversationId: null,
+  callToolsCallId: null,
+  callDetectionSource: null,
 }
 
 // Keep-alive mechanism
@@ -176,6 +180,15 @@ function broadcastToUI(message: object): void {
   chrome.runtime.sendMessage(message).catch(() => {
     // UI might not be open, that's okay
   })
+}
+
+// Helper to send message to content script on the active CallTools tab
+function notifyContentScript(message: object): void {
+  if (extensionState.tabId) {
+    chrome.tabs.sendMessage(extensionState.tabId, message).catch(() => {
+      // Content script might not be ready
+    })
+  }
 }
 
 // Helper to send message to content script via port or tabs.sendMessage
@@ -405,11 +418,18 @@ async function processMessage(message: any, sender: any) {
       })
 
       // ✅ UPDATE STATE IMMEDIATELY
+      // Skip DOM detection if webhook already detected this call
+      if (extensionState.callDetectionSource === 'webhook' && extensionState.isOnCall) {
+        console.log('ℹ️ [Background] Call already detected via webhook, ignoring DOM detection')
+        return
+      }
+
       await updateExtensionState({
         isOnCall: true,
         tabId: callTabId,
         startTime: Date.now(),
         conversationId: null, // Reset conversation ID for new call
+        callDetectionSource: 'dom',
       })
 
       // Start keep-alive during call
@@ -932,6 +952,79 @@ async function connectAIBackend() {
         type: 'AI_ERROR',
         error
       })
+    })
+
+    // Webhook STATUS_UPDATE listener (call start/end from CallTools resthook)
+    awsWebSocketService.setStatusUpdateListener((payload) => {
+      console.log(`📞 [Background] Webhook STATUS_UPDATE: ${payload.event} (callId: ${payload.callId})`)
+
+      if (payload.event === 'CALL_STARTED') {
+        // Don't start a duplicate call if already on one
+        if (extensionState.isOnCall) {
+          console.log('ℹ️ [Background] Already on call, enriching with webhook callId')
+          updateExtensionState({
+            callToolsCallId: payload.callId,
+            callDetectionSource: 'webhook',
+          })
+          return
+        }
+
+        console.log('📞 [Background] Webhook detected CALL_STARTED — triggering call lifecycle')
+        updateExtensionState({
+          isOnCall: true,
+          startTime: Date.now(),
+          callToolsCallId: payload.callId,
+          callDetectionSource: 'webhook',
+          conversationId: null,
+        })
+
+        startKeepAlive()
+
+        // Clear previous call data
+        chrome.storage.local.set({
+          'callStoreState': JSON.stringify({
+            transcriptions: [],
+            coachingTips: [],
+            audioLevel: 0
+          })
+        })
+
+        broadcastToUI({
+          type: 'CALL_DETECTED',
+          tabId: extensionState.tabId,
+          timestamp: Date.now(),
+          clearPreviousData: true,
+          source: 'webhook',
+          callToolsCallId: payload.callId,
+        })
+
+        // Notify content script to suppress DOM polling
+        notifyContentScript({ type: 'WEBHOOK_CALL_STARTED', payload })
+
+      } else if (payload.event === 'CALL_ENDED') {
+        if (!extensionState.isOnCall) {
+          console.log('ℹ️ [Background] Not on a call, ignoring webhook CALL_ENDED')
+          return
+        }
+
+        console.log('📞 [Background] Webhook detected CALL_ENDED — ending call')
+        updateExtensionState({
+          isOnCall: false,
+          callDetectionSource: null,
+          callToolsCallId: null,
+        })
+
+        handleCallEnd(extensionState.tabId || undefined)
+        stopKeepAlive()
+
+        broadcastToUI({
+          type: 'CALL_ENDED_RETAIN_DATA',
+          timestamp: Date.now(),
+          source: 'webhook',
+        })
+
+        notifyContentScript({ type: 'WEBHOOK_CALL_ENDED', payload })
+      }
     })
 
     // Connect

@@ -14,6 +14,7 @@
 
 import { AWS_WEBSOCKET_URL, BACKEND_API_KEY } from '@/config/aws';
 import type { IntelligenceUpdatePayload } from '@/types/ai-coaching.types';
+import type { WebhookStatusUpdatePayload } from '@/types';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
 
@@ -54,6 +55,7 @@ export class AWSWebSocketService {
   private aiTipListener: ((tip: AIRecommendation) => void) | null = null;
   private intelligenceListener: ((data: IntelligenceUpdatePayload) => void) | null = null;
   private errorListener: ((error: { code: string; message: string }) => void) | null = null;
+  private statusUpdateListener: ((payload: WebhookStatusUpdatePayload) => void) | null = null;
 
   constructor() {
     console.log('🚀 [AWSWebSocket] Service initialized');
@@ -85,6 +87,13 @@ export class AWSWebSocketService {
    */
   setErrorListener(listener: (error: { code: string; message: string }) => void): void {
     this.errorListener = listener;
+  }
+
+  /**
+   * Set STATUS_UPDATE listener (webhook call events)
+   */
+  setStatusUpdateListener(listener: (payload: WebhookStatusUpdatePayload) => void): void {
+    this.statusUpdateListener = listener;
   }
 
   /**
@@ -429,6 +438,17 @@ export class AWSWebSocketService {
             this.conversationStartRejecter(new Error(errorPayload.message || 'Server error'));
             this.conversationStartResolver = null;
             this.conversationStartRejecter = null;
+          }
+          break;
+
+        case 'STATUS_UPDATE':
+          if (!data.payload) {
+            console.error('❌ [AWSWebSocket] STATUS_UPDATE missing payload');
+            break;
+          }
+          console.log(`📞 [AWSWebSocket] Status update: ${data.payload.event} (callId: ${data.payload.callId})`);
+          if (this.statusUpdateListener) {
+            this.statusUpdateListener(data.payload);
           }
           break;
 

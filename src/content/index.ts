@@ -471,9 +471,66 @@ const CONFIRMATION_THRESHOLD = 3
 const INACTIVE_THRESHOLD = 5 // Require MORE confirmations to mark as inactive
 const CHECK_INTERVAL = 2000
 
+// Webhook-aware detection state
+let webhookCallActive = false // Set when webhook reports call started
+let domPollingEnabled = true  // Can be disabled when webhook is primary
+let domFallbackTimer: ReturnType<typeof setTimeout> | null = null
+const DOM_FALLBACK_DELAY = 30000 // 30 seconds before falling back to DOM
+
+// Listen for webhook events from background
+chrome.runtime.onMessage.addListener((message) => {
+  if (message.type === 'WEBHOOK_CALL_STARTED') {
+    console.log('📞 [Content] Webhook CALL_STARTED — suppressing DOM polling')
+    webhookCallActive = true
+    domPollingEnabled = false
+    lastCallState = true
+    lastConfirmedCallState = true
+    stateConfirmationCount = 0
+    if (domFallbackTimer) {
+      clearTimeout(domFallbackTimer)
+      domFallbackTimer = null
+    }
+  }
+
+  if (message.type === 'WEBHOOK_CALL_ENDED') {
+    console.log('📞 [Content] Webhook CALL_ENDED — re-enabling DOM polling')
+    webhookCallActive = false
+    domPollingEnabled = true
+    lastCallState = false
+    lastConfirmedCallState = false
+    stateConfirmationCount = 0
+  }
+
+  if (message.type === 'WEBHOOK_STATUS') {
+    const active = message.payload?.active
+    if (active) {
+      console.log('📡 [Content] Webhook active — DOM polling will be fallback only')
+      // Start fallback timer: if no webhook event in 30s, re-enable DOM polling
+      if (!webhookCallActive && !domFallbackTimer) {
+        domFallbackTimer = setTimeout(() => {
+          if (!webhookCallActive) {
+            console.log('⏱️ [Content] No webhook event in 30s — re-enabling DOM polling')
+            domPollingEnabled = true
+          }
+          domFallbackTimer = null
+        }, DOM_FALLBACK_DELAY)
+      }
+      domPollingEnabled = false
+    } else {
+      console.log('📡 [Content] Webhook inactive — DOM polling enabled')
+      domPollingEnabled = true
+    }
+  }
+})
+
 function checkCallStatus(): void {
   // Skip checks when tab is hidden
   if (document.hidden) {
+    return
+  }
+
+  // Skip DOM polling when webhook is controlling call detection
+  if (!domPollingEnabled) {
     return
   }
 
