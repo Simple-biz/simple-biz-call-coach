@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Coach — AI Coaching Pipeline</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f172a; color: #e2e8f0; padding: 40px 20px; min-height: 100vh; }
+  h1 { text-align: center; font-size: 28px; margin-bottom: 8px; color: #f8fafc; }
+  .subtitle { text-align: center; font-size: 14px; color: #94a3b8; margin-bottom: 40px; }
+  .flowchart { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .node { padding: 16px 24px; border-radius: 12px; text-align: center; min-width: 320px; max-width: 500px; position: relative; }
+  .node .label { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .node .detail { font-size: 12px; opacity: 0.8; }
+  .node .file { font-size: 11px; font-family: 'SF Mono', 'Consolas', monospace; opacity: 0.5; margin-top: 4px; }
+
+  .source    { background: #1e3a5f; border: 2px solid #3b82f6; }
+  .capture   { background: #1e3a4f; border: 2px solid #06b6d4; }
+  .transcribe { background: #1a3a2a; border: 2px solid #22c55e; }
+  .backend   { background: #2d1f4e; border: 2px solid #a855f7; }
+  .ai        { background: #4a1942; border: 2px solid #ec4899; }
+  .ui        { background: #3b2a1a; border: 2px solid #f59e0b; }
+  .trigger   { background: #1a2a3a; border: 2px dashed #64748b; min-width: 240px; }
+
+  .arrow { display: flex; flex-direction: column; align-items: center; padding: 4px 0; }
+  .arrow .line { width: 2px; height: 20px; background: #475569; }
+  .arrow .head { width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #475569; }
+  .arrow .msg { font-size: 11px; color: #94a3b8; font-family: monospace; margin: 2px 0; }
+
+  .section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #64748b; margin: 20px 0 8px 0; }
+
+  .parallel { display: flex; gap: 20px; align-items: flex-start; justify-content: center; width: 100%; }
+  .parallel-branch { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+  .divider { width: 100%; max-width: 600px; height: 1px; background: #334155; margin: 24px 0; }
+
+  .legend { max-width: 900px; margin: 40px auto 0; display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #94a3b8; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Simple.Biz Call Coach</h1>
+<p class="subtitle">Real-time AI Coaching Pipeline — from audio capture to script suggestion</p>
+
+<div class="flowchart">
+
+  <!-- PHASE 1: AUDIO CAPTURE -->
+  <div class="section-label">Audio Capture</div>
+
+  <div class="node source">
+    <div class="label">CallTools.io — Live Call</div>
+    <div class="detail">Agent on phone with customer via WebRTC</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">RTCPeerConnection intercepted</div><div class="head"></div></div>
+
+  <div class="node capture">
+    <div class="label">WebRTC Interceptor</div>
+    <div class="detail">Captures caller (remote) + agent (local) audio streams</div>
+    <div class="file">src/injected/webrtc-interceptor.ts</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">Float32 → Int16 PCM via MessagePort</div><div class="head"></div></div>
+
+  <div class="node capture">
+    <div class="label">WebRTC Bridge → Offscreen Document</div>
+    <div class="detail">Processes dual-channel audio, streams to offscreen for transcription</div>
+    <div class="file">src/content/webrtc-bridge.ts → src/offscreen/index.ts</div>
+  </div>
+
+  <!-- PHASE 2: TRANSCRIPTION -->
+  <div class="divider"></div>
+  <div class="section-label">Transcription</div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">Audio chunks (linear16, 48kHz)</div><div class="head"></div></div>
+
+  <div class="node transcribe">
+    <div class="label">Deepgram Nova-2</div>
+    <div class="detail">Real-time speech-to-text with speaker labels (caller vs agent)</div>
+    <div class="file">wss://api.deepgram.com/v1/listen</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">TRANSCRIPTION_UPDATE (interim + final)</div><div class="head"></div></div>
+
+  <div class="node backend">
+    <div class="label">Background Service Worker</div>
+    <div class="detail">Central coordinator — stores transcripts, routes messages, manages state</div>
+    <div class="file">src/background/index.ts</div>
+  </div>
+
+  <!-- PHASE 3: PARALLEL — UI + Backend storage -->
+  <div class="divider"></div>
+  <div class="section-label">Distribution</div>
+
+  <div class="parallel">
+    <div class="parallel-branch">
+      <div class="arrow"><div class="line"></div><div class="msg">STATE_UPDATE</div><div class="head"></div></div>
+      <div class="node ui" style="min-width: 240px;">
+        <div class="label">Side Panel UI</div>
+        <div class="detail">Live transcript display</div>
+        <div class="file">src/sidepanel/SidePanel.tsx</div>
+      </div>
+    </div>
+
+    <div class="parallel-branch">
+      <div class="arrow"><div class="line"></div><div class="msg">sendTranscript() (final only)</div><div class="head"></div></div>
+      <div class="node backend" style="min-width: 280px;">
+        <div class="label">AWS WebSocket API Gateway</div>
+        <div class="detail">Routes to Transcript Lambda</div>
+        <div class="file">wss://wu4pgdpdv9...amazonaws.com</div>
+      </div>
+      <div class="arrow"><div class="line"></div><div class="msg">action: "transcript"</div><div class="head"></div></div>
+      <div class="node backend" style="min-width: 280px;">
+        <div class="label">Transcript Lambda</div>
+        <div class="detail">Saves to PostgreSQL (RDS)</div>
+        <div class="file">infra/lib/lambda/transcript/index.ts</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHASE 4: AI SUGGESTION -->
+  <div class="divider"></div>
+  <div class="section-label">AI Suggestion Generation</div>
+
+  <div class="node trigger">
+    <div class="label">Agent clicks "Get Next Suggestion"</div>
+    <div class="detail">REQUEST_NEXT_TIP → Background → getIntelligence()</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">action: "getIntelligence"</div><div class="head"></div></div>
+
+  <div class="node ai">
+    <div class="label">Intelligence Lambda</div>
+    <div class="detail">Fetches last 50 transcripts from PostgreSQL</div>
+    <div class="file">infra/lib/lambda/intelligence/index.ts</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">Step 1: Conversation analysis</div><div class="head"></div></div>
+
+  <div class="node ai">
+    <div class="label">Claude Haiku 4.5 — Analysis</div>
+    <div class="detail">Extracts sentiment, intents, topics, entities, summary</div>
+    <div class="file">infra/lib/lambda/shared/intelligence-client.ts</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">Step 2: Script selection</div><div class="head"></div></div>
+
+  <div class="node ai" style="border-color: #f43f5e;">
+    <div class="label">Claude Haiku 4.5 — Golden Script Matching</div>
+    <div class="detail">27 proven sales scripts (Mark's library) cached in prompt.<br>Matches customer intent → best script for current call stage.<br>Stages: Greeting → Discovery → Objection → Closing</div>
+    <div class="file">infra/lib/lambda/shared/claude-client-optimized.ts</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">Saves recommendation to PostgreSQL</div><div class="head"></div></div>
+
+  <!-- PHASE 5: RESPONSE -->
+  <div class="divider"></div>
+  <div class="section-label">Response</div>
+
+  <div class="node backend">
+    <div class="label">Route Response → WebSocket → Background</div>
+    <div class="detail">AI_TIP message with heading, stage, context, script</div>
+  </div>
+
+  <div class="arrow"><div class="line"></div><div class="msg">AI_TIP broadcast</div><div class="head"></div></div>
+
+  <div class="node ui" style="border-color: #f59e0b; border-width: 3px;">
+    <div class="label">Side Panel — AI Coaching Card</div>
+    <div class="detail">Displays: heading, conversation stage, context explanation,<br>and the recommended script for the agent to say</div>
+    <div class="file">src/components/AITipsSection.tsx</div>
+  </div>
+
+</div>
+
+<!-- Legend -->
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background: #3b82f6;"></div> Audio Source</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #06b6d4;"></div> Audio Capture</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #22c55e;"></div> Transcription</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #a855f7;"></div> Backend / WebSocket</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #ec4899;"></div> AI Processing</div>
+  <div class="legend-item"><div class="legend-dot" style="background: #f59e0b;"></div> UI Display</div>
+</div>
+
+</body>
+</html>
