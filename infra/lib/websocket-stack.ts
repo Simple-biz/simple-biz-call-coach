@@ -11,9 +11,11 @@ import { Construct } from 'constructs';
 
 export interface WebSocketStackProps extends cdk.StackProps {
   connectionsTable: dynamodb.Table;
+  callEventsTable: dynamodb.Table;
   rdsConnectionString: string;
   anthropicApiKey: string;
   backendApiKey: string;
+  callToolsWebhookSecret: string;
 }
 
 export class WebSocketStack extends cdk.Stack {
@@ -29,8 +31,8 @@ export class WebSocketStack extends cdk.Stack {
       DATABASE_URL: props.rdsConnectionString,
       ANTHROPIC_API_KEY: props.anthropicApiKey,
       BACKEND_API_KEY: props.backendApiKey,
-      CLAUDE_HAIKU_MODEL: 'claude-3-5-haiku-20241022',  // Fixed: Haiku 3.5 is the latest
-      CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20250929',  // Sonnet 4.5 is correct
+      CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
+      CLAUDE_SONNET_MODEL: 'claude-haiku-4-5-20251001',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 
@@ -281,7 +283,8 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     this.webSocketApi.addRoute('getIntelligence', {
-      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceAlias)
+      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceAlias),
+      returnResponse: true,
     });
 
     // Stage
@@ -309,7 +312,61 @@ export class WebSocketStack extends cdk.Stack {
       fn.addToRolePolicy(postToConnectionPolicy);
     });
 
+    // ============================================================================
+    // CallTools Webhook Receiver (HTTP Lambda + Function URL)
+    // ============================================================================
+
+    // Extract WebSocket domain from the API for the webhook to broadcast
+    const webSocketDomain = `${this.webSocketApi.apiId}.execute-api.${this.region}.amazonaws.com`;
+
+    const webhookHandler = new nodejs.NodejsFunction(this, 'WebhookHandler', {
+      entry: 'lib/lambda/webhook/index.ts',
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      functionName: 'DevAssist-CallTools-Webhook',
+      environment: {
+        CONNECTIONS_TABLE: props.connectionsTable.tableName,
+        CALL_EVENTS_TABLE: props.callEventsTable.tableName,
+        CALLTOOLS_WEBHOOK_SECRET: props.callToolsWebhookSecret,
+        WEBSOCKET_API_DOMAIN: webSocketDomain,
+        WEBSOCKET_API_STAGE: 'production',
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
+      },
+      tracing: lambda.Tracing.ACTIVE,
+      logRetention: logs.RetentionDays.ONE_WEEK,
+      bundling: {
+        minify: true,
+        sourceMap: true,
+        externalModules: ['@aws-sdk/*'],
+      },
+    });
+
+    // Grant DynamoDB permissions
+    props.callEventsTable.grantReadWriteData(webhookHandler);
+    props.connectionsTable.grantReadData(webhookHandler);
+
+    // Grant permission to post to WebSocket connections
+    webhookHandler.addToRolePolicy(postToConnectionPolicy);
+
+    // Lambda Function URL (public endpoint for CallTools to POST to)
+    const webhookUrl = webhookHandler.addFunctionUrl({
+      authType: lambda.FunctionUrlAuthType.NONE, // Auth handled in Lambda via Bearer token
+      cors: {
+        allowedOrigins: ['*'],
+        allowedMethods: [lambda.HttpMethod.POST],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+      },
+    });
+
     // Outputs
+    new cdk.CfnOutput(this, 'WebhookURL', {
+      value: webhookUrl.url,
+      description: 'CallTools Webhook URL (POST /webhook/call-events)',
+      exportName: 'DevAssist-WebhookURL',
+    });
+
     new cdk.CfnOutput(this, 'WebSocketURL', {
       value: this.webSocketUrl,
       description: 'WebSocket API Gateway URL',

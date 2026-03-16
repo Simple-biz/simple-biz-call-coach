@@ -26,11 +26,14 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.1009.0",
+    "@aws-sdk/client-dynamodb": "^3.1009.0",
     "@crxjs/vite-plugin": "^2.2.1",
-"@tailwindcss/postcss": "^4.1.16",
+    "@tailwindcss/postcss": "^4.1.16",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
+    "@types/aws-lambda": "^8.10.161",
     "@types/chrome": "^0.1.27",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",

@@ -231,7 +231,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     console.error('[Claude] API Error:', error);
 
     // Fallback to default scripts if API fails
-    return getFallbackOptions(request.callStage, Date.now() - startTime);
+    return getFallbackSuggestion(request.callStage, Date.now() - startTime);
   }
 }
 

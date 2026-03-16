@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 import 'source-map-support/register';
-import 'dotenv/config';
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+config({ path: resolve(__dirname, '../../.env.production') });
 import * as cdk from 'aws-cdk-lib';
 import { DatabaseStack } from '../lib/database-stack';
 import { WebSocketStack } from '../lib/websocket-stack';
@@ -12,6 +15,7 @@ const app = new cdk.App();
 const rdsConnectionString = process.env.DATABASE_URL || '';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
 const backendApiKey = process.env.BACKEND_API_KEY || 'dev-api-key-change-in-production';
+const callToolsWebhookSecret = process.env.CALLTOOLS_WEBHOOK_SECRET || '';
 const alertEmail = process.env.ALERT_EMAIL || 'cob@example.com';
 
 // Validate required environment variables
@@ -40,9 +44,11 @@ const databaseStack = new DatabaseStack(app, 'DevAssist-Database', {
 // WebSocket Stack (API Gateway + Lambda)
 const webSocketStack = new WebSocketStack(app, 'DevAssist-WebSocket', {
   connectionsTable: databaseStack.connectionsTable,
+  callEventsTable: databaseStack.callEventsTable,
   rdsConnectionString,
   anthropicApiKey,
   backendApiKey,
+  callToolsWebhookSecret,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: 'us-east-1'
