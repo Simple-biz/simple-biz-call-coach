@@ -20,13 +20,12 @@
     "inlineSources": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
-    "skipLibCheck": true,
-    "typeRoots": [
-      "./node_modules/@types"
-    ]
+    "skipLibCheck": true
   },
   "exclude": [
     "node_modules",
-    "cdk.out"
+    "cdk.out",
+    "lib/lambda/**/*.OLD.ts",
+    "lib/lambda/**/*-optimized.ts"
   ]
 }

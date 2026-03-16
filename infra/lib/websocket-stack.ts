@@ -31,8 +31,8 @@ export class WebSocketStack extends cdk.Stack {
       DATABASE_URL: props.rdsConnectionString,
       ANTHROPIC_API_KEY: props.anthropicApiKey,
       BACKEND_API_KEY: props.backendApiKey,
-      CLAUDE_HAIKU_MODEL: 'claude-3-5-haiku-20241022',  // Fixed: Haiku 3.5 is the latest
-      CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20250929',  // Sonnet 4.5 is correct
+      CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
+      CLAUDE_SONNET_MODEL: 'claude-haiku-4-5-20251001',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 
@@ -283,7 +283,8 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     this.webSocketApi.addRoute('getIntelligence', {
-      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceAlias)
+      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceAlias),
+      returnResponse: true,
     });
 
     // Stage
