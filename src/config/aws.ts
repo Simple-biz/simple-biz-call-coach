@@ -10,8 +10,8 @@
 // WebSocket API Gateway URL from CDK deployment
 export const AWS_WEBSOCKET_URL = 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
 
-// Backend API Key (stored in extension storage, this is the default)
-export const BACKEND_API_KEY = 'j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=';
+// Backend API Key — read from env var (set in .env.production), fallback to hardcoded
+export const BACKEND_API_KEY = import.meta.env.VITE_BACKEND_API_KEY || 'devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa';
 
 // Environment detection
 export const IS_PRODUCTION = AWS_WEBSOCKET_URL.includes('amazonaws.com');

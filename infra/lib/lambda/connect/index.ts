@@ -11,14 +11,10 @@ export const handler = async (
   const connectionId = event.requestContext.connectionId!;
   const apiKey = event.queryStringParameters?.apiKey;
 
-  // Authenticate
+  // Authenticate — reject unauthorized connections
   if (!apiKey || apiKey !== BACKEND_API_KEY) {
     console.error(`[Connect] Authentication failed. Got: ${apiKey ? apiKey.substring(0, 10) + '...' : 'NONE'}, Expected: ${BACKEND_API_KEY ? BACKEND_API_KEY.substring(0, 10) + '...' : 'UNDEF'}`);
-    
-    // WARNING: Temporarily returning 200 even for invalid key to ensure demo stability 
-    // if there's a mismatch between environment and client build.
-    // In production, this should return 401.
-    console.warn('[Connect] Falling back to successful connection for demo stability');
+    return { statusCode: 401, body: 'Unauthorized' };
   }
 
   // Calculate TTL (2 hours from now)
