@@ -61,6 +61,7 @@ export interface CallSession {
 export interface Settings {
   deepgramApiKey: string;
   n8nWebhookUrl: string;
+  highlightKeywords: string[];
   aiCoachingEnabled: boolean; // NEW: Enable/disable AI coaching via n8n
   audioSensitivity: number;
   enableNotifications: boolean;
