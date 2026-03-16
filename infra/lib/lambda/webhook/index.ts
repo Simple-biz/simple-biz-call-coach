@@ -1,5 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { DynamoDBClient, PutItemCommand, GetItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, PutItemCommand, GetItemCommand, QueryCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { sendToConnection, WebSocketMessage } from '../shared/apigw-client';
 
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
@@ -204,10 +204,12 @@ async function broadcastToAgent(
   callId: string,
   payload: CallToolsCallPayload
 ): Promise<number> {
-  // Query connections by agentId using GSI
+  // MVP: Broadcast to ALL connected extensions (agentId matching deferred to v2)
+  // This works because typically only 1 agent uses the extension at a time
   let connectionIds: string[];
   try {
-    const result = await dynamoClient.send(new QueryCommand({
+    // First try agent-specific query
+    const agentResult = await dynamoClient.send(new QueryCommand({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'agentId-index',
       KeyConditionExpression: 'agentId = :agentId',
@@ -216,11 +218,24 @@ async function broadcastToAgent(
       },
     }));
 
-    connectionIds = (result.Items || [])
+    connectionIds = (agentResult.Items || [])
       .map(item => item.connectionId?.S)
       .filter((id): id is string => !!id);
+
+    // If no agent-specific connections found, broadcast to all connections
+    if (connectionIds.length === 0) {
+      console.log(`[Webhook] No connections for agent ${agentId}, broadcasting to all`);
+      const allResult = await dynamoClient.send(new ScanCommand({
+        TableName: CONNECTIONS_TABLE,
+        ProjectionExpression: 'connectionId',
+      }));
+
+      connectionIds = (allResult.Items || [])
+        .map(item => item.connectionId?.S)
+        .filter((id): id is string => !!id);
+    }
   } catch (error) {
-    console.error('[Webhook] Error querying connections for agent:', error);
+    console.error('[Webhook] Error querying connections:', error);
     return 0;
   }
 

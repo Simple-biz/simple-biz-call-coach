@@ -100,8 +100,26 @@ export interface ChromeMessage {
     | "START_WEBRTC_CAPTURE"     // NEW: Background → Offscreen
     | "GET_WEBRTC_STREAMS"       // NEW: Offscreen → Content
     | "WEBRTC_STREAM_PORT"       // NEW: Content → Offscreen
-    | "AUDIO_TRACKS_READY";      // NEW: Injected → Content (via postMessage)
+    | "AUDIO_TRACKS_READY"       // NEW: Injected → Content (via postMessage)
+    | "WEBHOOK_CALL_STARTED"    // Background → Content: webhook detected call start
+    | "WEBHOOK_CALL_ENDED"      // Background → Content: webhook detected call end
+    | "WEBHOOK_STATUS";         // Background → Content: webhook connection status
   payload?: any;
+}
+
+// CallTools Webhook STATUS_UPDATE payload (from webhook Lambda)
+export interface WebhookStatusUpdatePayload {
+  event: 'CALL_STARTED' | 'CALL_ENDED';
+  callId: string;
+  agentId: string;
+  destination: string;
+  source: string;
+  callType: string;
+  inbound: boolean;
+  start: string;
+  end: string | null;
+  duration: number;
+  campaign: number | null;
 }
 
 // Deepgram-specific types
@@ -153,6 +171,8 @@ export interface ExtensionState {
   captureMode: 'webrtc';  // NEW: Only WebRTC mode supported
   remoteStreamActive: boolean;  // NEW: Caller audio stream status
   localStreamActive: boolean;   // NEW: Agent mic stream status
+  callToolsCallId: string | null;  // CallTools UUID from webhook
+  callDetectionSource: 'webhook' | 'dom' | null;  // How call was detected
 }
 
 // Offscreen Message Types
