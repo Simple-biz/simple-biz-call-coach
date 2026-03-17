@@ -264,6 +264,16 @@ export const useCallStore = create<CallStore>((set, get) => ({
   },
 
   addAITip: (tip) => {
+    const { lastAIUpdate } = get();
+    const now = Date.now();
+    const RATE_LIMIT_MS = 120000; // 2 minutes
+
+    // Client-side rate limiting: skip tip if last one was less than 2 minutes ago
+    if (lastAIUpdate && (now - lastAIUpdate) < RATE_LIMIT_MS) {
+      console.log(`⏳ [Store] AI tip throttled (${Math.round((now - lastAIUpdate) / 1000)}s since last tip, need ${RATE_LIMIT_MS / 1000}s)`);
+      return;
+    }
+    
     set((state) => ({
       aiTips: [...state.aiTips, tip],
       lastAIUpdate: Date.now(),
