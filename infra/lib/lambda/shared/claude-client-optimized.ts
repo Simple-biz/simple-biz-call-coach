@@ -1,8 +1,16 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { getSecret } from './secrets-client';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!
-});
+// Lazy-initialized Anthropic client (async due to Secrets Manager fetch)
+let anthropicClient: Anthropic | null = null;
+
+async function getAnthropicClient(): Promise<Anthropic> {
+  if (!anthropicClient) {
+    const apiKey = await getSecret('ANTHROPIC_API_KEY');
+    anthropicClient = new Anthropic({ apiKey });
+  }
+  return anthropicClient;
+}
 
 const HAIKU_MODEL = process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20250929';
 const SONNET_MODEL = process.env.CLAUDE_SONNET_MODEL || 'claude-sonnet-4-5-20250929';
@@ -155,6 +163,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     // Ultra-compressed user prompt
     const userPrompt = buildCompressedPrompt(request);
 
+    const anthropic = await getAnthropicClient();
     const response = await anthropic.messages.create({
       model,
       max_tokens: 150, // Single script - reduced tokens
