@@ -206,12 +206,13 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     // Lambda: Intelligence Handler (Conversation Analysis)
+    // Memory bumped to 1024MB for faster CPU (Claude API calls are CPU-bound on JSON parsing)
     const intelligenceHandler = new nodejs.NodejsFunction(this, 'IntelligenceHandler', {
       entry: 'lib/lambda/intelligence/index.ts',
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(30),
-      memorySize: 512,
+      memorySize: 1024,
       environment: sharedEnv,
       tracing: lambda.Tracing.ACTIVE,
       logRetention: logs.RetentionDays.ONE_WEEK,
