@@ -63,6 +63,7 @@ interface ExtensionState {
   conversationId?: string | null
   callToolsCallId?: string | null
   callDetectionSource?: 'webhook' | 'dom' | null
+  coachingPending?: boolean
 }
 
 // ============================================================================
@@ -126,6 +127,62 @@ function stopAutoAnalysisLoop() {
 }
 
 // ============================================================================
+// CAPTURE START HELPER
+// ============================================================================
+
+async function startCaptureAndCoaching(captureTabId: number) {
+  console.log('🎙️ [Background] Starting capture and coaching for tab', captureTabId)
+  startKeepAlive()
+
+  await updateExtensionState({
+    isRecording: true,
+    tabId: captureTabId,
+    coachingPending: false,
+  })
+
+  try {
+    await ensureOffscreenDocument()
+
+    const settings = await chrome.storage.local.get('deepgramApiKey')
+    const deepgramApiKey = settings.deepgramApiKey
+    if (!deepgramApiKey) {
+      throw new Error('No Deepgram API key configured. Please add your API key in settings.')
+    }
+
+    console.log('🔑 [Background] Deepgram API key found')
+
+    const streamId = await chrome.tabCapture.getMediaStreamId({
+      targetTabId: captureTabId,
+    })
+    console.log('✅ [Background] Stream ID obtained:', streamId)
+
+    await chrome.runtime.sendMessage({
+      type: 'START_TAB_CAPTURE',
+      streamId: streamId,
+      deepgramApiKey: deepgramApiKey,
+    })
+    console.log('✅ [Background] Tab capture started')
+
+    await connectAIBackend()
+
+    broadcastToUI({
+      type: 'CAPTURE_STARTED',
+      timestamp: Date.now(),
+    })
+  } catch (error: any) {
+    console.error('❌ [Background] Failed to start coaching:', error)
+    await updateExtensionState({
+      isRecording: false,
+      coachingPending: false,
+    })
+    broadcastToUI({
+      type: 'CALL_START_FAILED',
+      error: error.message || 'Failed to start coaching',
+    })
+  }
+}
+
+// ============================================================================
 // PORT-BASED CONNECTIONS FROM CONTENT SCRIPTS
 // ============================================================================
 
@@ -152,9 +209,13 @@ chrome.runtime.onConnect.addListener(port => {
           tabId: tabId,
         })
         broadcastToUI({ type: 'CALL_STARTED', tabId })
-        // DISABLED: Auto-analysis loop - suggestions now manual only via "Get Next Suggestion" button
-        // startAutoAnalysisLoop();
         console.log(`✅ [Background] Call state updated (Tab: ${tabId})`)
+
+        // Auto-start capture if coaching was armed before the call
+        if (extensionState.coachingPending && tabId) {
+          console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
+          await startCaptureAndCoaching(tabId)
+        }
       }
 
       if (message.type === 'CALL_ENDED') {
@@ -444,6 +505,12 @@ async function processMessage(message: any, sender: any) {
       })
 
       console.log(`✅ [Background] New call initialized with clean state (Tab: ${callTabId})`)
+
+      // Auto-start capture if coaching was armed before the call
+      if (extensionState.coachingPending && callTabId) {
+        console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
+        await startCaptureAndCoaching(callTabId)
+      }
       break
 
     case 'CALL_ENDED':
@@ -483,7 +550,6 @@ async function processMessage(message: any, sender: any) {
 
     case 'START_COACHING_FROM_POPUP':
       console.log('📞 [Background] Coaching start requested from popup')
-      startKeepAlive()
 
       // Get tab ID
       const tabId = message.tabId
@@ -496,66 +562,23 @@ async function processMessage(message: any, sender: any) {
         break
       }
 
-      // Update state
-      await updateExtensionState({
-        isRecording: true,
-        tabId: tabId,
-      })
-
-      try {
-        // 1. Ensure offscreen document exists (close stale ones)
-        console.log('📄 [Background] Ensuring offscreen document...')
-        await ensureOffscreenDocument()
-
-        // 2. Get Deepgram API key from storage
-        const settings = await chrome.storage.local.get('deepgramApiKey')
-        const deepgramApiKey = settings.deepgramApiKey
-
-        if (!deepgramApiKey) {
-          throw new Error('No Deepgram API key configured. Please add your API key in settings.')
-        }
-
-        console.log('🔑 [Background] Deepgram API key found')
-
-        // 3. Get tab capture stream ID
-        console.log('📡 [Background] Getting tab capture stream ID...')
-        const streamId = await chrome.tabCapture.getMediaStreamId({
-          targetTabId: tabId,
+      // If no active call, arm coaching to auto-start when call is detected
+      if (!extensionState.isOnCall) {
+        console.log('⏳ [Background] No active call — coaching armed, will start on call detection')
+        await updateExtensionState({
+          coachingPending: true,
+          tabId: tabId,
+          isRecording: true,
         })
-
-        console.log('✅ [Background] Stream ID obtained:', streamId)
-
-        // 4. Send START_TAB_CAPTURE to offscreen
-        console.log('📤 [Background] Sending START_TAB_CAPTURE to offscreen...')
-        await chrome.runtime.sendMessage({
-          type: 'START_TAB_CAPTURE',
-          streamId: streamId,
-          deepgramApiKey: deepgramApiKey,
-        })
-
-        console.log('✅ [Background] Tab capture started')
-
-        // 4. Connect to AI Backend
-        await connectAIBackend()
-
-        // Notify UI
         broadcastToUI({
-          type: 'CAPTURE_STARTED',
+          type: 'COACHING_PENDING',
           timestamp: Date.now(),
         })
-
-      } catch (error: any) {
-        console.error('❌ [Background] Failed to start coaching:', error)
-
-        await updateExtensionState({
-          isRecording: false,
-        })
-
-        broadcastToUI({
-          type: 'CALL_START_FAILED',
-          error: error.message || 'Failed to start coaching',
-        })
+        break
       }
+
+      // Call is active — start capture immediately
+      await startCaptureAndCoaching(tabId)
       break
 
     // ========================================================================
@@ -1119,6 +1142,7 @@ async function handleCallEnd(tabId?: number) {
     await updateExtensionState({
       isRecording: false,
       isOnCall: false,
+      coachingPending: false,
       tabId: null,
       currentStreamId: null,
       deepgramStatus: 'disconnected',
