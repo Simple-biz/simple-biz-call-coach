@@ -438,7 +438,7 @@ infra/lib/lambda/shared/claude-client-optimized.ts
 3. Verify AWS Lambda backend:
    ```
    URL: wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production
-   API Key: devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa
+   API Key: <BACKEND_API_KEY>
    (Stored in .env.production)
    ```
 

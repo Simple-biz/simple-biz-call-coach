@@ -232,7 +232,7 @@ Check these CloudWatch log groups:
 ```
 DATABASE_URL=postgresql://dbadmin:***@devassist-call-coach-db.cy5ki6sce1l1.us-east-1.rds.amazonaws.com:5432/devassist_call_coach
 ANTHROPIC_API_KEY=sk-ant-api03-***
-BACKEND_API_KEY=j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=
+BACKEND_API_KEY=<BACKEND_API_KEY>
 CONNECTIONS_TABLE=devassist-websocket-connections
 CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20250929
 CLAUDE_SONNET_MODEL=claude-sonnet-4-5-20250929
@@ -241,7 +241,7 @@ CLAUDE_SONNET_MODEL=claude-sonnet-4-5-20250929
 ### Frontend (`src/config/aws.ts`)
 ```typescript
 export const AWS_WEBSOCKET_URL = 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
-export const BACKEND_API_KEY = 'j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=';
+export const BACKEND_API_KEY = '<BACKEND_API_KEY>';
 ```
 
 ---

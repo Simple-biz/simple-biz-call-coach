@@ -170,12 +170,12 @@ Contains:
 ### Database Connection String
 Once the database is available, the connection string will be:
 ```
-postgresql://dbadmin:cv8A0qYmuuW30JjZgkoOod8f6kbMooME@[ENDPOINT]:5432/devassist_call_coach
+postgresql://dbadmin:<RDS_PASSWORD>@[ENDPOINT]:5432/devassist_call_coach
 ```
 
 ### Backend API Key (for extension)
 ```
-j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=
+<BACKEND_API_KEY>
 ```
 
 ---

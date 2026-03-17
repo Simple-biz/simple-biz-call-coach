@@ -14,7 +14,7 @@ const app = new cdk.App();
 // Read environment variables
 const rdsConnectionString = process.env.DATABASE_URL || '';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
-const backendApiKey = process.env.BACKEND_API_KEY || 'dev-api-key-change-in-production';
+const backendApiKey = process.env.BACKEND_API_KEY || '';
 const callToolsWebhookSecret = process.env.CALLTOOLS_WEBHOOK_SECRET || '';
 const alertEmail = process.env.ALERT_EMAIL || 'cob@example.com';
 
