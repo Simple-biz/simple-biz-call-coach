@@ -133,11 +133,11 @@ Use the CallTools API to subscribe to call events. Replace `<WEBHOOK_URL>` with 
 
 ```bash
 curl -X POST "https://west-3.calltools.io/api/resthooksubscriptions/" \
-  -H "Authorization: Token 266a6541f642451ccfc90ce19790fab57291591d" \
+  -H "Authorization: Token <CALLTOOLS_API_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{
     "resthook_model": "Call",
-    "url": "<WEBHOOK_URL>?secret=ct-wh-a7f3e9b1d4c8052e6f19a3b7d5e2c8f4a1b6d9e3f7024c8a5b1e6d3f9a2c7",
+    "url": "<WEBHOOK_URL>?secret=<CALLTOOLS_WEBHOOK_SECRET>",
     "description": "DevAssist Call Coach webhook"
   }'
 ```
@@ -172,11 +172,11 @@ aws logs tail /aws/lambda/DevAssist-CallTools-Webhook --since 30m
 
 ```bash
 # List active subscriptions
-curl -s -H "Authorization: Token 266a6541f642451ccfc90ce19790fab57291591d" \
+curl -s -H "Authorization: Token <CALLTOOLS_API_TOKEN>" \
   "https://west-3.calltools.io/api/resthooksubscriptions/" | python -m json.tool
 
 # Check error logs
-curl -s -H "Authorization: Token 266a6541f642451ccfc90ce19790fab57291591d" \
+curl -s -H "Authorization: Token <CALLTOOLS_API_TOKEN>" \
   "https://west-3.calltools.io/api/resthookerrorlogs/" | python -m json.tool
 ```
 

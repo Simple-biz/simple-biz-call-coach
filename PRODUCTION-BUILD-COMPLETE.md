@@ -26,7 +26,7 @@
 ### `.env.production` Created
 ```env
 VITE_BACKEND_WS_URL=wss://devassist-call-coach-prod.eba-qkwfpnh3.us-east-1.elasticbeanstalk.com
-VITE_BACKEND_API_KEY=j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=
+VITE_BACKEND_API_KEY=<BACKEND_API_KEY>
 VITE_DEEPGRAM_API_KEY=
 ```
 

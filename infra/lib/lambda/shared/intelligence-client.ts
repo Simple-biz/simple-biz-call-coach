@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Transcript } from './db-client';
+import { getSecret } from './secrets-client';
 
 /**
  * Intelligence Client - Conversation Analysis using Claude Haiku 4.5
@@ -8,14 +9,13 @@ import { Transcript } from './db-client';
  * Performance: <500ms target (Haiku is fast and cost-effective)
  */
 
-// Initialize Anthropic client (reuse across Lambda invocations)
+// Initialize Anthropic client lazily (reuse across Lambda invocations)
 let anthropicClient: Anthropic | null = null;
 
-function getAnthropicClient(): Anthropic {
+async function getAnthropicClient(): Promise<Anthropic> {
   if (!anthropicClient) {
-    anthropicClient = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    });
+    const apiKey = await getSecret('ANTHROPIC_API_KEY');
+    anthropicClient = new Anthropic({ apiKey });
   }
   return anthropicClient;
 }
@@ -120,7 +120,7 @@ Return ONLY the JSON object, no other text.`;
   const userPrompt = `Analyze this sales conversation:\n\n${conversationText}`;
 
   try {
-    const client = getAnthropicClient();
+    const client = await getAnthropicClient();
 
     const startTime = Date.now();
     const response = await client.messages.create({

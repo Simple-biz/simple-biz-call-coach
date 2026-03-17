@@ -99,8 +99,8 @@ http://devassist-call-coach-prod.eba-qkwfpnh3.us-east-1.elasticbeanstalk.com/hea
 **Key Information:**
 - Database: `devassist-call-coach-db.cy5ki6sce1l1.us-east-1.rds.amazonaws.com`
 - Database Username: `dbadmin`
-- Database Password: `cv8A0qYmuuW30JjZgkoOod8f6kbMooME`
-- Backend API Key: `j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=`
+- Database Password: `<RDS_PASSWORD>`
+- Backend API Key: `<BACKEND_API_KEY>`
 - OpenAI API Key: (stored in DEPLOYMENT-INFO.md)
 
 ---
@@ -166,7 +166,7 @@ cd backend
 eb create devassist-call-coach-prod \
   --instance-type t3.small \
   --platform "Node.js 20" \
-  --envvars DATABASE_URL=postgresql://dbadmin:cv8A0qYmuuW30JjZgkoOod8f6kbMooME@devassist-call-coach-db.cy5ki6sce1l1.us-east-1.rds.amazonaws.com:5432/devassist_call_coach,OPENAI_API_KEY=<key>,API_KEY=j88URgUHnn1MtaezUpQF57IW7fIOY2Hotgya06UgAwQ=,ALLOWED_ORIGINS=chrome-extension://PLACEHOLDER,LOG_LEVEL=info,NODE_ENV=production
+  --envvars DATABASE_URL=postgresql://dbadmin:<RDS_PASSWORD>@devassist-call-coach-db.cy5ki6sce1l1.us-east-1.rds.amazonaws.com:5432/devassist_call_coach,OPENAI_API_KEY=<key>,API_KEY=<BACKEND_API_KEY>,ALLOWED_ORIGINS=chrome-extension://PLACEHOLDER,LOG_LEVEL=info,NODE_ENV=production
 ```
 
 ### Step 3: Verify Everything is Running

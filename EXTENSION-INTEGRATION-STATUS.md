@@ -15,7 +15,7 @@
 - ✅ Health endpoint: `/health`
 
 **Backend Credentials:**
-- API Key: `devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa`
+- API Key: `<BACKEND_API_KEY>`
 - Database: `devassist_coaching` (PostgreSQL)
 - OpenAI: Configured with user's API key
 
@@ -80,7 +80,7 @@ import { aiBackendService } from '@/services/ai-backend.service';
 async function initializeAIBackend() {
   await aiBackendService.initialize({
     url: 'http://localhost:3000', // TODO: Make configurable
-    apiKey: 'devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa',
+    apiKey: '<BACKEND_API_KEY>',
     autoReconnect: true,
     reconnectAttempts: 3,
   });
@@ -152,7 +152,7 @@ Default values:
 ```typescript
 aiBackendEnabled: true,
 aiBackendUrl: 'http://localhost:3000',
-aiBackendApiKey: 'devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa',
+aiBackendApiKey: '<BACKEND_API_KEY>',
 ```
 
 ### 5. Message Handlers in SidePanel (Optional Enhancement)
@@ -277,7 +277,7 @@ Update extension with production backend URL in settings.
 
 **Backend API Key:**
 ```
-devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa
+<BACKEND_API_KEY>
 ```
 
 **Backend URL (Local):**
