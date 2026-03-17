@@ -12,6 +12,7 @@ import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption } from "@
 import { ChatThread } from "@/components/ChatThread";
 import { IntelligenceDisplay } from "@/components/IntelligenceDisplay";
 import { AITipsSection } from "@/components/AITipsSection";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { SessionStats } from "@/components/SessionStats";
 import { pttDeepgramService, type PTTStatus } from "@/services/ptt-deepgram.service";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -866,7 +867,9 @@ export default function SidePanel() {
 
               {/* AI Coaching Tips */}
               <div className="px-4 pt-2">
-                <AITipsSection />
+                <ErrorBoundary>
+                  <AITipsSection />
+                </ErrorBoundary>
               </div>
 
               {/* Chat Thread with Manual Transcripts */}
@@ -929,7 +932,9 @@ export default function SidePanel() {
 
               {/* AI Coaching Tips */}
               <div className="px-4 pt-2">
-                <AITipsSection />
+                <ErrorBoundary>
+                  <AITipsSection />
+                </ErrorBoundary>
               </div>
 
               {/* Chat Thread with Live Transcripts */}

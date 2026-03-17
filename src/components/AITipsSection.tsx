@@ -70,7 +70,7 @@ export function AITipsSection() {
       reconnecting: { color: 'bg-orange-500', text: 'Reconnecting...', icon: '⟳' },
     };
 
-    const config = statusConfig[aiBackendStatus];
+    const config = statusConfig[aiBackendStatus] || statusConfig.disconnected;
 
     return (
       <div className="flex items-center gap-2 mb-4">
