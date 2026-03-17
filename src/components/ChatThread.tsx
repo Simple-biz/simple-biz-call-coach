@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Mic, MessageSquare, FileText, Code } from "lucide-react";
 import { GreetingsSelector } from "./GreetingsSelector";
+import { useSettingsStore } from "@/stores/settings-store";
+import { highlightText } from "@/utils/highlightKeywords";
 import type { Transcription, ScriptOption, CallState } from "@/types";
 
 interface ChatThreadProps {
@@ -21,6 +23,7 @@ export function ChatThread({
   onExportJSON,
 }: ChatThreadProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const highlightKeywords = useSettingsStore((s) => s.highlightKeywords);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll logic
@@ -130,7 +133,7 @@ export function ChatThread({
                           : "scale-100"
                       }`}
                     >
-                      {t.text}
+                      {highlightText(t.text, highlightKeywords)}
                       {!t.isFinal && (
                         <span className="ml-1 inline-flex gap-0.5">
                           <span

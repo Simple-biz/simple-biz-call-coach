@@ -8,6 +8,7 @@ interface SettingsStore extends Settings {
   setAiCoachingEnabled: (enabled: boolean) => void
   setAudioSensitivity: (sensitivity: number) => void
   setEnableNotifications: (enabled: boolean) => void
+  setHighlightKeywords: (keywords: string[]) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
 }
 
@@ -19,12 +20,14 @@ export const useSettingsStore = create<SettingsStore>()(
       aiCoachingEnabled: false,
       audioSensitivity: 0.1,
       enableNotifications: true,
+      highlightKeywords: ['price', 'pricing', 'cost', 'budget', 'contract', 'sign', 'decision', 'timeline', 'competitor'],
       theme: 'system',
 
       setDeepgramApiKey: (deepgramApiKey) => set({ deepgramApiKey }),
       setN8nWebhookUrl: (n8nWebhookUrl) => set({ n8nWebhookUrl }),
       setAiCoachingEnabled: (aiCoachingEnabled) => set({ aiCoachingEnabled }),
       setAudioSensitivity: (audioSensitivity) => set({ audioSensitivity }),
+      setHighlightKeywords: (highlightKeywords) => set({ highlightKeywords }),
       setEnableNotifications: (enableNotifications) => set({ enableNotifications }),
       setTheme: (theme) => set({ theme }),
     }),
