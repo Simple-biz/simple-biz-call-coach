@@ -6,6 +6,9 @@ package-lock.json
 dist/
 build/
 
+# Test coverage
+coverage/
+
 # Environment variables
 .env
 .env.local
