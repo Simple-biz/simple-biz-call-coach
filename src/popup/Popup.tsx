@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { Phone, Mic, Activity, CheckCircle, LogOut, Settings2 } from 'lucide-react'
 import { useCallStore } from '@/stores/call-store'
+import { SessionStats } from '@/components/SessionStats'
 import Login from './Login'
 
 export default function Popup() {
-  const { audioState, audioLevel } = useCallStore() // ← Added audioState
+  const { audioState, audioLevel, transcriptions, coachingTips, session, callState } = useCallStore()
   const [isStarting, setIsStarting] = useState(false)
   const [isCallToolsTab, setIsCallToolsTab] = useState(true)
   const [isCheckingTab, setIsCheckingTab] = useState(true)
@@ -501,6 +502,14 @@ export default function Popup() {
                 AI is listening and providing real-time tips
               </p>
             </div>
+
+            <SessionStats
+              transcriptions={transcriptions}
+              coachingTips={coachingTips}
+              session={session}
+              callState={callState}
+              compact
+            />
 
             <button
               onClick={() => {
