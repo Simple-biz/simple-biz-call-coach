@@ -81,11 +81,8 @@ export async function generateConversationIntelligence(params: {
     .map(t => `[${t.speaker.toUpperCase()}]: ${t.text}`)
     .join('\n');
 
-  // Intelligence extraction prompt (optimized for Haiku)
-  const prompt = `Analyze this sales conversation and extract intelligence in JSON format.
-
-CONVERSATION:
-${conversationText}
+  // Static system prompt (cached across invocations for ~90% cost reduction)
+  const systemPrompt = `You analyze sales conversations and extract intelligence in JSON format.
 
 Extract and return ONLY valid JSON with this structure:
 {
@@ -119,6 +116,9 @@ Common topics: pricing, services, website_optimization, SEO, marketing, scheduli
 
 Return ONLY the JSON object, no other text.`;
 
+  // User prompt contains only the dynamic conversation text
+  const userPrompt = `Analyze this sales conversation:\n\n${conversationText}`;
+
   try {
     const client = getAnthropicClient();
 
@@ -127,10 +127,17 @@ Return ONLY the JSON object, no other text.`;
       model: HAIKU_MODEL,
       max_tokens: 1024,
       temperature: 0, // Deterministic for consistent analysis
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' }
+        }
+      ],
       messages: [
         {
           role: 'user',
-          content: prompt
+          content: userPrompt
         }
       ]
     });

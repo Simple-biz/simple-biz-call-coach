@@ -1,6 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConnection } from '../shared/dynamo-client';
-import { getRecentTranscripts, getTranscriptCount, saveAIRecommendation } from '../shared/postgres-client';
+import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
 import { generateConversationIntelligence } from '../shared/intelligence-client';
 import { generateAITip } from '../shared/claude-client-optimized';
 
@@ -40,8 +40,8 @@ export const handler = async (
 
     console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit})`);
 
-    // 1. Fetch recent transcripts from PostgreSQL
-    const transcripts = await getRecentTranscripts(conversationId, limit);
+    // 1. Fetch recent transcripts + count in a single query
+    const { transcripts, count: transcriptCount } = await getRecentTranscriptsWithCount(conversationId, limit);
 
     if (transcripts.length === 0) {
       console.warn('[Intelligence] No transcripts found for analysis');
@@ -51,9 +51,9 @@ export const handler = async (
       };
     }
 
-    console.log(`[Intelligence] Fetched ${transcripts.length} transcripts for analysis`);
+    console.log(`[Intelligence] Fetched ${transcripts.length} transcripts (${transcriptCount} total) for analysis`);
 
-    // 2. Generate intelligence using Claude Haiku 4.5
+    // 2. Generate intelligence using Claude Haiku 4.5 (with prompt caching)
     const aiStartTime = Date.now();
     const intelligence = await generateConversationIntelligence({
       conversationId,
@@ -65,8 +65,6 @@ export const handler = async (
 
     // 3. Generate AI tip from golden script
     console.log(`[Intelligence] Generating AI tip...`);
-
-    const transcriptCount = await getTranscriptCount(conversationId);
 
     let callStage: 'greeting' | 'discovery' | 'objection' | 'closing';
     if (transcriptCount < 5) {

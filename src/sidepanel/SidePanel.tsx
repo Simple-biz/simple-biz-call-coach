@@ -125,15 +125,15 @@ export default function SidePanel() {
 
         case "CALL_STARTED":
         case "CAPTURE_STARTED":
-          useCallStore.getState().setCallState("active");
-          console.log("✅ [SidePanel] Call state updated to ACTIVE");
+          useCallStore.getState().startCall();
+          console.log("✅ [SidePanel] Call started with session");
           break;
 
         case "CALL_ENDED":
         case "CAPTURE_STOPPED":
-          useCallStore.getState().setCallState("inactive");
+          useCallStore.getState().endCall();
           setDeepgramStatus("disconnected");
-          console.log("✅ [SidePanel] Call state updated to INACTIVE");
+          console.log("✅ [SidePanel] Call ended, session finalized");
           break;
 
         case "DEEPGRAM_STATUS":
