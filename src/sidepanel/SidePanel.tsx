@@ -11,6 +11,7 @@ import {
 import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption } from "@/types";
 import { ChatThread } from "@/components/ChatThread";
 import { IntelligenceDisplay } from "@/components/IntelligenceDisplay";
+import { SessionStats } from "@/components/SessionStats";
 import { pttDeepgramService, type PTTStatus } from "@/services/ptt-deepgram.service";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -22,7 +23,8 @@ export default function SidePanel() {
     coachingTips,
     intelligence,
     entities,
-    environment
+    environment,
+    session
   } = useCallStore();
   const [deepgramStatus, setDeepgramStatus] =
     useState<DeepgramStatus>("disconnected");
@@ -937,28 +939,13 @@ export default function SidePanel() {
       {/* DeveloperMode component not needed as functionality is now in dual-view */}
 
       {/* Footer Stats */}
-      {transcriptions.length > 0 && (
-        <div className="border-t bg-card p-3">
-          <div className="flex items-center justify-between gap-4 text-xs text-muted-foreground px-2">
-            <div className="flex items-center gap-3">
-              <span>
-                📝 {transcriptions.filter((t) => t.isFinal).length} transcripts
-              </span>
-              <span>•</span>
-              <span>💡 {coachingTips.length} tips</span>
-              <span>•</span>
-              <span>
-                {environment === 'sandbox'
-                  ? '🔧 Sandbox'
-                  : deepgramStatus === "connected"
-                    ? "🟢 Live"
-                    : "⚫ Offline"
-                }
-              </span>
-            </div>
-            {/* Environment Switcher removed - Controlled strictly by Popup Toggle */}
-          </div>
-        </div>
+      {(transcriptions.length > 0 || callState === "active") && (
+        <SessionStats
+          transcriptions={transcriptions}
+          coachingTips={coachingTips}
+          session={session}
+          callState={callState}
+        />
       )}
     </div>
   );
