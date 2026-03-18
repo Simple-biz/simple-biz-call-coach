@@ -96,10 +96,9 @@ let keepAliveInterval: number | null = null
 // 3-Second Auto-Analysis Loop (DISABLED - manual suggestions only)
 let autoAnalysisInterval: any = null;
 
-// @ts-expect-error - Function preserved for potential future use but currently disabled
-function _startAutoAnalysisLoop_DISABLED() {
+function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
-  console.log('🔄 [Background] Starting 3-second Auto-Analysis Loop');
+  console.log('🔄 [Background] Starting 10-second Auto-Analysis Loop');
 
   autoAnalysisInterval = setInterval(() => {
      if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
@@ -115,7 +114,7 @@ function _startAutoAnalysisLoop_DISABLED() {
         // Trigger intelligence update
         awsWebSocketService.getIntelligence(conversationId);
      }
-  }, 3000);
+  }, 10000);
 }
 
 function stopAutoAnalysisLoop() {
@@ -796,8 +795,8 @@ async function processMessage(message: any, sender: any) {
         }
 
         try {
-          // Trigger intelligence generation with current conversation context
-          await awsWebSocketService.getIntelligence(extensionState.conversationId);
+          // Trigger intelligence + AI tip generation (skipTip=false for manual request)
+          await awsWebSocketService.getIntelligence(extensionState.conversationId, false);
           console.log('✅ [Background] Intelligence update requested');
           return { success: true, message: 'Generating next suggestion...' };
         } catch (error: any) {
@@ -1068,6 +1067,9 @@ async function connectAIBackend() {
 
     if (conversationId) {
       console.log(`✅ [Background] AI conversation started: ${conversationId}`)
+
+      // Start auto-analysis loop for real-time intelligence updates
+      startAutoAnalysisLoop()
 
       await updateExtensionState({
         conversationId: conversationId,

@@ -101,15 +101,21 @@ Extract and return ONLY valid JSON with this structure:
   "entities": {
     "businessNames": ["company names mentioned"],
     "contactInfo": {
-      "emails": ["email addresses"],
-      "phoneNumbers": ["phone numbers"],
-      "urls": ["website URLs"]
+      "emails": ["email addresses found"],
+      "phoneNumbers": ["phone numbers in any format"],
+      "urls": ["website domains or URLs — include domains like 'simple.biz', 'acme.com', etc. even without http://"]
     },
-    "locations": ["cities, states, countries"],
-    "dates": ["dates or time references"],
-    "people": ["person names"]
+    "locations": ["cities, states, countries, street addresses"],
+    "dates": ["ANY date, time, day, or scheduling reference — e.g. 'tomorrow', 'March 19', '9AM', 'Thursday afternoon', 'next week'"],
+    "people": ["person names mentioned"]
   }
 }
+
+IMPORTANT extraction rules:
+- urls: Extract ANY website or domain mentioned (e.g. "simple.biz", "google.com", "acme.io"). Do NOT require "http://" or "www".
+- dates: Extract ALL time references including relative ones ("tomorrow", "next Monday", "this Thursday") and specific ones ("March 19 at 9AM", "2pm").
+- phoneNumbers: Extract numbers in any format — (555) 555-5555, 555-555-5555, etc.
+- people: Extract first names and full names of anyone mentioned.
 
 Common intents: interested, not_interested, pricing_inquiry, request_callback, objection, purchase_intent, information_seeking
 Common topics: pricing, services, website_optimization, SEO, marketing, scheduling, follow_up

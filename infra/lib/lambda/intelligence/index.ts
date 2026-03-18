@@ -36,9 +36,9 @@ export const handler = async (
 
     // Parse message body (optional parameters)
     const body = JSON.parse(event.body || '{}');
-    const { limit = 50 } = body;
+    const { limit = 50, skipTip = false } = body;
 
-    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit})`);
+    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip})`);
 
     // 1. Fetch recent transcripts + count in a single query
     const { transcripts, count: transcriptCount } = await getRecentTranscriptsWithCount(conversationId, limit);
@@ -63,66 +63,83 @@ export const handler = async (
 
     console.log(`[Intelligence] Analysis complete in ${aiLatency}ms, model: ${intelligence.model}`);
 
-    // 3. Generate AI tip from golden script
-    console.log(`[Intelligence] Generating AI tip...`);
+    // 3. Generate AI tip from golden script (only if not skipped)
+    let aiTipPayload: any = undefined;
 
-    let callStage: 'greeting' | 'discovery' | 'objection' | 'closing';
-    if (transcriptCount < 5) {
-      callStage = 'greeting';
-    } else if (transcriptCount < 10) {
-      callStage = 'discovery';
-    } else if (transcriptCount < 20) {
-      callStage = 'objection';
+    if (!skipTip) {
+      console.log(`[Intelligence] Generating AI tip...`);
+
+      let callStage: 'greeting' | 'discovery' | 'objection' | 'closing';
+      if (transcriptCount < 5) {
+        callStage = 'greeting';
+      } else if (transcriptCount < 10) {
+        callStage = 'discovery';
+      } else if (transcriptCount < 20) {
+        callStage = 'objection';
+      } else {
+        callStage = 'closing';
+      }
+
+      const contextWindow = 15;
+      const recentTranscripts = transcripts.slice(-contextWindow);
+      const conversationContext = recentTranscripts
+        .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
+        .join('\n');
+
+      const aiTipStartTime = Date.now();
+      const aiTip = await generateAITip({
+        conversationId,
+        callStage,
+        recentTranscript: conversationContext,
+        conversationSummary: intelligence.summary,
+        transcriptCount
+      });
+      const aiTipLatency = Date.now() - aiTipStartTime;
+
+      console.log(`[Intelligence] AI Tip generated in ${aiTipLatency}ms, Stage: ${aiTip.stage}, Heading: ${aiTip.heading}`);
+
+      // Save AI recommendation to database
+      const recommendationId = await saveAIRecommendation({
+        conversation_id: conversationId,
+        heading: aiTip.heading,
+        stage: aiTip.stage,
+        context: aiTip.context,
+        option1_label: 'Best Match',
+        option1_script: aiTip.suggestion,
+        option2_label: 'Alternative',
+        option2_script: aiTip.suggestion,
+        option3_label: 'Alternative',
+        option3_script: aiTip.suggestion
+      });
+
+      aiTipPayload = {
+        heading: aiTip.heading,
+        stage: aiTip.stage,
+        context: aiTip.context,
+        suggestion: aiTip.suggestion,
+        recommendationId,
+      };
     } else {
-      callStage = 'closing';
+      console.log(`[Intelligence] Skipping AI tip generation (auto-analysis mode)`);
     }
-
-    const contextWindow = 15;
-    const recentTranscripts = transcripts.slice(-contextWindow);
-    const conversationContext = recentTranscripts
-      .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
-      .join('\n');
-
-    const aiTipStartTime = Date.now();
-    const aiTip = await generateAITip({
-      conversationId,
-      callStage,
-      recentTranscript: conversationContext,
-      conversationSummary: intelligence.summary,
-      transcriptCount
-    });
-    const aiTipLatency = Date.now() - aiTipStartTime;
-
-    console.log(`[Intelligence] AI Tip generated in ${aiTipLatency}ms, Stage: ${aiTip.stage}, Heading: ${aiTip.heading}`);
-
-    // 4. Save AI recommendation to database
-    const recommendationId = await saveAIRecommendation({
-      conversation_id: conversationId,
-      heading: aiTip.heading,
-      stage: aiTip.stage,
-      context: aiTip.context,
-      option1_label: 'Best Match',
-      option1_script: aiTip.suggestion,
-      option2_label: 'Alternative',
-      option2_script: aiTip.suggestion,
-      option3_label: 'Alternative',
-      option3_script: aiTip.suggestion
-    });
 
     const totalLatency = Date.now() - requestStartTime;
     console.log(`[Intelligence] Done in ${totalLatency}ms`);
 
-    // 5. Return AI_TIP via route response (API Gateway sends this back to client)
+    // 4. Return intelligence (+ AI tip if requested)
     return {
       statusCode: 200,
       body: JSON.stringify({
-        type: 'AI_TIP',
+        type: 'INTELLIGENCE_UPDATE',
         payload: {
-          heading: aiTip.heading,
-          stage: aiTip.stage,
-          context: aiTip.context,
-          suggestion: aiTip.suggestion,
-          recommendationId,
+          intelligence: {
+            sentiment: intelligence.sentiment,
+            intents: intelligence.intents,
+            topics: intelligence.topics,
+            summary: intelligence.summary,
+          },
+          entities: intelligence.entities,
+          ...(aiTipPayload ? { aiTip: aiTipPayload } : {}),
           timestamp: Date.now()
         }
       })

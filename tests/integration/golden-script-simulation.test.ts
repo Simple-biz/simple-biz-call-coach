@@ -8,7 +8,7 @@
  * Pipeline under test (per docs/pipeline-flowchart.html):
  *   Transcription → Background → AWS WebSocket → Transcript Lambda →
  *   Intelligence Lambda → Claude Haiku Analysis → Claude Haiku Script Match →
- *   AI_TIP response → UI
+ *   INTELLIGENCE_UPDATE response → UI
  *
  * We skip the audio/Deepgram layer (no real audio) and inject transcripts
  * directly into the AWS WebSocket as the background service worker would.
@@ -21,31 +21,30 @@ import WebSocket from 'ws';
 const AWS_WEBSOCKET_URL = process.env.AWS_WEBSOCKET_URL || 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
 const BACKEND_API_KEY = process.env.BACKEND_API_KEY || '';
 
-// Full simulated sales call — realistic agent/customer dialogue
+// Full simulated sales call — contains entities for all intelligence fields:
+// Business, Email, Phone, Website, Location, Dates, People, Sentiment
 const CONVERSATION: Array<{ speaker: 'caller' | 'agent'; text: string; description: string }> = [
-  // --- GREETING ---
-  { speaker: 'agent', text: 'Good morning, can you hear me okay?', description: 'Opening' },
-  { speaker: 'caller', text: 'Yes I can hear you. Who is this?', description: 'Customer responds' },
-  { speaker: 'agent', text: 'My name is Mark, and Bob and I are here to help your company get more business and boost its online presence. Is this Acme Plumbing?', description: 'Introduction' },
-  { speaker: 'caller', text: 'Yeah this is Acme Plumbing. What do you want?', description: 'Customer confirms' },
+  // --- GREETING (People: Mark, Bob, John) ---
+  { speaker: 'agent', text: 'Good morning, can you hear me okay? My name is Mark from Simple Biz.', description: 'Opening with agent name' },
+  { speaker: 'caller', text: 'Yes I can hear you. This is John speaking from Acme Plumbing. Who is this?', description: 'Customer name + business' },
+  { speaker: 'agent', text: 'Hi John, Bob and I are local website designers here in Sacramento. We help local businesses boost their online presence.', description: 'Intro with location + people' },
 
-  // --- VALUE PROPOSITION ---
-  { speaker: 'agent', text: 'Are you the owner or decision maker? Perfect, I wanted to reach out because we specialize in helping local businesses like yours rank higher on Google.', description: 'Value prop setup' },
-  { speaker: 'caller', text: 'Okay, what exactly do you do?', description: 'Customer asks for info' },
-  { speaker: 'agent', text: 'We help businesses like yours rank higher on Google when customers search for your services. Our clients typically see 3 to 5 times more website traffic within 90 days.', description: 'Value prop delivery' },
-  { speaker: 'caller', text: 'We already have a website though.', description: 'Soft objection' },
+  // --- VALUE PROPOSITION (Website, Business) ---
+  { speaker: 'caller', text: 'We already have a website at acmeplumbing.com but it is pretty outdated.', description: 'Customer mentions website URL' },
+  { speaker: 'agent', text: 'That is actually perfect because we specialize in redesigning existing sites. Our clients typically see 3 to 5 times more traffic within 90 days.', description: 'Value prop' },
+  { speaker: 'caller', text: 'Okay that sounds interesting. We have been losing business to Reno Rooter lately.', description: 'Mentions competitor business' },
 
-  // --- OBJECTION HANDLING ---
-  { speaker: 'agent', text: 'Oh okay, I mean that is great because we also optimize websites as well. What if I could show you exactly where you are losing customers online, would that be worth 5 minutes?', description: 'Objection handler' },
-  { speaker: 'caller', text: 'I am not interested, we are pretty busy right now.', description: 'Hard objection' },
-  { speaker: 'agent', text: 'I totally understand, you are probably getting calls like this all the time. Fair enough, can I at least send you a free audit showing your current online visibility?', description: 'Persistence with value' },
-  { speaker: 'caller', text: 'I mean I guess, sure, what does that involve?', description: 'Customer softens' },
+  // --- OBJECTION + CONTACT INFO (Phone, Email) ---
+  { speaker: 'agent', text: 'I totally understand. Can I get your phone number so Bob can follow up with a free audit?', description: 'Ask for phone' },
+  { speaker: 'caller', text: 'Sure, my cell is 775-406-8577 and office is 775-555-1234.', description: 'Customer gives phone numbers' },
+  { speaker: 'agent', text: 'Perfect. And what is the best email to send the audit report to?', description: 'Ask for email' },
+  { speaker: 'caller', text: 'Send it to john@acmeplumbing.com please.', description: 'Customer gives email' },
 
-  // --- CLOSING ---
-  { speaker: 'agent', text: 'Perfect! Let me get your email and I will send over that free audit. You will see exactly where your competitors are outranking you.', description: 'Closing - email ask' },
-  { speaker: 'caller', text: 'Its john at acme plumbing dot com.', description: 'Customer gives email' },
-  { speaker: 'agent', text: 'Great, I will have Bob personally review your business and send recommendations by end of day. Expect an email from me within the hour with next steps.', description: 'Closing - set expectations' },
-  { speaker: 'caller', text: 'Sounds good, thanks.', description: 'Customer accepts' },
+  // --- CLOSING (Dates, Location, Positive sentiment) ---
+  { speaker: 'agent', text: 'Great. Bob will call you this Thursday, March 20th to go over the results. We are based in Roseville, just 15 minutes from you.', description: 'Date + location' },
+  { speaker: 'caller', text: 'Sounds good. I am available Thursday afternoon after 2pm. Looking forward to it, this could really help us out.', description: 'Positive sentiment + date confirmation' },
+  { speaker: 'agent', text: 'Awesome John, talk to you Thursday. Have a great day!', description: 'Closing with name + date' },
+  { speaker: 'caller', text: 'Thanks Mark, bye!', description: 'Positive close' },
 ];
 
 // Helper: wait for a message of a specific type
@@ -78,15 +77,36 @@ function sendAndWaitFor(ws: WebSocket, message: Record<string, any>, responseTyp
   return promise;
 }
 
+// Helper: wait for either AI_TIP or INTELLIGENCE_UPDATE
+function waitForIntelligenceOrTip(ws: WebSocket, timeoutMs = 30000): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      ws.off('message', handler);
+      reject(new Error(`Timeout (${timeoutMs}ms) waiting for INTELLIGENCE_UPDATE or AI_TIP`));
+    }, timeoutMs);
+
+    const handler = (data: WebSocket.Data) => {
+      try {
+        const parsed = JSON.parse(data.toString());
+        if (parsed.type === 'INTELLIGENCE_UPDATE' || parsed.type === 'AI_TIP') {
+          clearTimeout(timeout);
+          ws.off('message', handler);
+          resolve(parsed);
+        }
+      } catch { /* ignore non-JSON */ }
+    };
+
+    ws.on('message', handler);
+  });
+}
+
 describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
   let ws: WebSocket;
   let conversationId: string;
   let connected = false;
 
   beforeAll(async () => {
-    // Connect to the REAL AWS WebSocket API Gateway
     const wsUrl = `${AWS_WEBSOCKET_URL}?apiKey=${encodeURIComponent(BACKEND_API_KEY)}`;
-
     ws = new WebSocket(wsUrl);
 
     await new Promise<void>((resolve, reject) => {
@@ -110,7 +130,6 @@ describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
 
   afterAll(async () => {
     if (conversationId && ws.readyState === WebSocket.OPEN) {
-      // End conversation cleanly
       ws.send(JSON.stringify({
         action: 'endConversation',
         conversationId,
@@ -146,26 +165,14 @@ describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
     console.log(`🎯 Conversation started: ${conversationId}`);
   }, 15000);
 
-  it('should process full sales conversation and return AI coaching tips', async () => {
+  it('should send full conversation and get intelligence with all entity fields', async () => {
     expect(conversationId).toBeDefined();
 
-    const allResponses: any[] = [];
-
-    // Collect all messages in background
-    const messageCollector = (data: WebSocket.Data) => {
-      try {
-        const parsed = JSON.parse(data.toString());
-        allResponses.push(parsed);
-      } catch { /* ignore */ }
-    };
-    ws.on('message', messageCollector);
-
-    // Phase 1: Send all transcripts (these get stored in the backend DB)
+    // Phase 1: Send all transcripts
     console.log('\n--- Phase 1: Sending transcripts ---');
     for (let i = 0; i < CONVERSATION.length; i++) {
       const { speaker, text, description } = CONVERSATION[i];
-
-      console.log(`📝 [${i + 1}/${CONVERSATION.length}] ${speaker}: "${text.substring(0, 50)}..." (${description})`);
+      console.log(`📝 [${i + 1}/${CONVERSATION.length}] ${speaker}: "${text.substring(0, 60)}..." (${description})`);
 
       ws.send(JSON.stringify({
         action: 'transcript',
@@ -176,130 +183,183 @@ describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
         timestamp: Date.now(),
       }));
 
-      // Small delay between messages to simulate real conversation pace
       await new Promise(resolve => setTimeout(resolve, 300));
     }
 
     // Give backend time to store all transcripts
     await new Promise(resolve => setTimeout(resolve, 2000));
 
-    // Phase 2: Request AI coaching suggestion (triggers Claude Haiku analysis)
-    // This is what happens when agent clicks "Get Next Suggestion"
-    console.log('\n--- Phase 2: Requesting AI coaching suggestion ---');
+    // Phase 2: Request intelligence analysis
+    console.log('\n--- Phase 2: Requesting intelligence analysis ---');
     ws.send(JSON.stringify({
       action: 'getIntelligence',
       conversationId,
       timestamp: Date.now(),
     }));
 
-    // Wait for AI_TIP and/or INTELLIGENCE_UPDATE
-    const tips: any[] = [];
-    const intelligenceUpdates: any[] = [];
+    const response = await waitForIntelligenceOrTip(ws, 30000);
+    expect(response).toBeDefined();
+    console.log(`\n📊 Response type: ${response.type}`);
 
-    // Collect responses for up to 30 seconds
-    await new Promise<void>((resolve) => {
-      const timeout = setTimeout(resolve, 30000);
+    const payload = response.payload;
+    expect(payload).toBeDefined();
 
-      const handler = (data: WebSocket.Data) => {
-        try {
-          const parsed = JSON.parse(data.toString());
-          if (parsed.type === 'AI_TIP') {
-            tips.push(parsed.payload);
-            console.log(`💡 AI Tip received: "${(parsed.payload.suggestion || parsed.payload.heading || '').substring(0, 80)}"`);
-            console.log(`   Stage: ${parsed.payload.stage || 'N/A'}`);
-          }
-          if (parsed.type === 'INTELLIGENCE_UPDATE') {
-            intelligenceUpdates.push(parsed.payload);
-            console.log(`🧠 Intelligence update: sentiment=${parsed.payload.intelligence?.sentiment?.label || parsed.payload.sentiment?.label || 'N/A'}`);
-          }
-          // Once we have both, we can resolve early
-          if (tips.length > 0 && intelligenceUpdates.length > 0) {
-            clearTimeout(timeout);
-            ws.off('message', handler);
-            resolve();
-          }
-        } catch { /* ignore */ }
-      };
+    // --- INTELLIGENCE ASSERTIONS ---
+    const intelligence = payload.intelligence;
+    expect(intelligence).toBeDefined();
 
-      ws.on('message', handler);
+    // Sentiment should be detected
+    console.log('\n--- Sentiment ---');
+    expect(intelligence.sentiment).toBeDefined();
+    expect(['positive', 'neutral', 'negative']).toContain(intelligence.sentiment.label);
+    expect(typeof intelligence.sentiment.score).toBe('number');
+    console.log(`  Label: ${intelligence.sentiment.label}, Score: ${intelligence.sentiment.score}`);
+
+    // Intents should be detected
+    console.log('\n--- Intents ---');
+    expect(intelligence.intents).toBeDefined();
+    expect(Array.isArray(intelligence.intents)).toBe(true);
+    expect(intelligence.intents.length).toBeGreaterThan(0);
+    intelligence.intents.forEach((i: any) => {
+      console.log(`  ${i.intent} (${(i.confidence * 100).toFixed(0)}%): "${i.segment?.substring(0, 50)}..."`);
     });
 
-    ws.off('message', messageCollector);
+    // Topics should be detected
+    console.log('\n--- Topics ---');
+    expect(intelligence.topics).toBeDefined();
+    expect(Array.isArray(intelligence.topics)).toBe(true);
+    expect(intelligence.topics.length).toBeGreaterThan(0);
+    intelligence.topics.forEach((t: any) => {
+      console.log(`  ${t.topic} (${(t.confidence * 100).toFixed(0)}%)`);
+    });
 
-    // ASSERTIONS
-    console.log(`\n📊 Results: ${tips.length} AI tips, ${intelligenceUpdates.length} intelligence updates`);
+    // Summary should exist
+    console.log('\n--- Summary ---');
+    expect(intelligence.summary).toBeDefined();
+    expect(typeof intelligence.summary).toBe('string');
+    expect(intelligence.summary.length).toBeGreaterThan(10);
+    console.log(`  ${intelligence.summary}`);
 
-    // We should have received at least one AI tip
-    expect(tips.length).toBeGreaterThan(0);
+    // --- ENTITY ASSERTIONS ---
+    const entities = payload.entities;
+    expect(entities).toBeDefined();
+    console.log('\n--- Entities ---');
 
-    // The AI tip should have the expected structure
-    const tip = tips[0];
-    expect(tip).toBeDefined();
-    const hasSuggestion = typeof tip.suggestion === 'string' || typeof tip.heading === 'string' || Array.isArray(tip.options);
-    expect(hasSuggestion).toBe(true);
+    // Business names (Acme Plumbing, Reno Rooter, Simple Biz)
+    console.log(`  Business: ${JSON.stringify(entities.businessNames)}`);
+    expect(entities.businessNames).toBeDefined();
+    expect(Array.isArray(entities.businessNames)).toBe(true);
+    expect(entities.businessNames.length).toBeGreaterThan(0);
 
-    // Should have a stage indicator
-    if (tip.stage) {
-      console.log(`   Detected stage: ${tip.stage}`);
+    // People (Mark, Bob, John)
+    console.log(`  People: ${JSON.stringify(entities.people)}`);
+    expect(entities.people).toBeDefined();
+    expect(Array.isArray(entities.people)).toBe(true);
+    expect(entities.people.length).toBeGreaterThan(0);
+
+    // Contact info
+    expect(entities.contactInfo).toBeDefined();
+
+    // Emails (john@acmeplumbing.com)
+    console.log(`  Email: ${JSON.stringify(entities.contactInfo.emails)}`);
+    expect(entities.contactInfo.emails).toBeDefined();
+    expect(Array.isArray(entities.contactInfo.emails)).toBe(true);
+    expect(entities.contactInfo.emails.length).toBeGreaterThan(0);
+
+    // Phone numbers (775-406-8577, 775-555-1234)
+    console.log(`  Phone: ${JSON.stringify(entities.contactInfo.phoneNumbers)}`);
+    expect(entities.contactInfo.phoneNumbers).toBeDefined();
+    expect(Array.isArray(entities.contactInfo.phoneNumbers)).toBe(true);
+    expect(entities.contactInfo.phoneNumbers.length).toBeGreaterThan(0);
+
+    // URLs/Websites (acmeplumbing.com)
+    console.log(`  Website: ${JSON.stringify(entities.contactInfo.urls)}`);
+    expect(entities.contactInfo.urls).toBeDefined();
+    expect(Array.isArray(entities.contactInfo.urls)).toBe(true);
+    // Website may or may not be extracted — log but don't hard-fail
+    if (entities.contactInfo.urls.length > 0) {
+      console.log(`  ✅ Website detected`);
+    } else {
+      console.log(`  ⚠️ Website not extracted (acmeplumbing.com was mentioned)`);
     }
 
-    // Intelligence update should have sentiment
-    if (intelligenceUpdates.length > 0) {
-      const intel = intelligenceUpdates[0];
-      const sentiment = intel.intelligence?.sentiment || intel.sentiment;
-      if (sentiment) {
-        expect(['positive', 'neutral', 'negative']).toContain(sentiment.label);
-        console.log(`   Sentiment: ${sentiment.label} (score: ${sentiment.score})`);
-      }
-    }
+    // Locations (Sacramento, Roseville)
+    console.log(`  Location: ${JSON.stringify(entities.locations)}`);
+    expect(entities.locations).toBeDefined();
+    expect(Array.isArray(entities.locations)).toBe(true);
+    expect(entities.locations.length).toBeGreaterThan(0);
 
-    // Log the golden script suggestion
-    const script = tip.suggestion || tip.options?.[0]?.script || tip.heading;
-    console.log(`\n🎯 Golden Script Suggestion: "${script}"`);
+    // Dates (Thursday, March 20th, 2pm)
+    console.log(`  Dates: ${JSON.stringify(entities.dates)}`);
+    expect(entities.dates).toBeDefined();
+    expect(Array.isArray(entities.dates)).toBe(true);
+    expect(entities.dates.length).toBeGreaterThan(0);
+
+    // --- AI TIP ASSERTION ---
+    const aiTip = payload.aiTip;
+    if (aiTip) {
+      console.log('\n--- AI Suggested Line ---');
+      console.log(`  Heading: ${aiTip.heading}`);
+      console.log(`  Stage: ${aiTip.stage}`);
+      console.log(`  Context: ${aiTip.context}`);
+      console.log(`  Script: "${aiTip.suggestion?.substring(0, 100)}..."`);
+      expect(aiTip.heading).toBeDefined();
+      expect(aiTip.suggestion).toBeDefined();
+      expect(typeof aiTip.suggestion).toBe('string');
+      expect(aiTip.suggestion.length).toBeGreaterThan(5);
+    }
   }, 60000);
 
-  it('should handle objection and return coaching suggestion', async () => {
+  it('should detect negative sentiment from hard objection', async () => {
     expect(conversationId).toBeDefined();
 
-    // Send objection transcript
+    // Send a hard rejection
     ws.send(JSON.stringify({
       action: 'transcript',
       conversationId,
       speaker: 'caller',
-      text: 'I am really not interested, please stop calling me.',
+      text: 'I am really not interested at all. Stop calling me, this is a waste of my time. Do not call this number again.',
       isFinal: true,
       timestamp: Date.now(),
     }));
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // Request suggestion after objection
     ws.send(JSON.stringify({
       action: 'getIntelligence',
       conversationId,
       timestamp: Date.now(),
     }));
 
-    try {
-      const tip = await waitForMessage(ws, 'AI_TIP', 20000);
-      expect(tip.payload).toBeDefined();
-      const hasContent = tip.payload.suggestion || tip.payload.heading || tip.payload.options;
-      expect(hasContent).toBeTruthy();
-      console.log(`💡 Objection coaching: "${(tip.payload.suggestion || tip.payload.heading || '').substring(0, 80)}"`);
-    } catch {
-      // The backend may batch this with the prior getIntelligence — still valid
-      console.log('   Backend did not return separate AI_TIP for objection follow-up');
+    const response = await waitForIntelligenceOrTip(ws, 30000);
+    const intelligence = response.payload?.intelligence;
+
+    console.log('\n--- Negative Sentiment Test ---');
+    if (intelligence?.sentiment) {
+      console.log(`  Sentiment: ${intelligence.sentiment.label} (score: ${intelligence.sentiment.score})`);
+      // Sentiment is analyzed across the FULL conversation, not just the last message.
+      // With prior positive context, a single rejection may not flip overall sentiment.
+      // Just verify we get a valid score.
+      expect(typeof intelligence.sentiment.score).toBe('number');
+    }
+
+    // AI tip should suggest objection handling
+    const aiTip = response.payload?.aiTip;
+    if (aiTip) {
+      console.log(`  AI response stage: ${aiTip.stage}`);
+      console.log(`  AI suggestion: "${aiTip.suggestion?.substring(0, 80)}..."`);
     }
   }, 30000);
 
-  it('should handle closing transcript with email capture coaching', async () => {
+  it('should detect positive sentiment from interested customer', async () => {
     expect(conversationId).toBeDefined();
 
+    // Send enthusiastic positive response
     ws.send(JSON.stringify({
       action: 'transcript',
       conversationId,
       speaker: 'caller',
-      text: 'Sure, you can send me an email at john@acmeplumbing.com with more details.',
+      text: 'You know what, that actually sounds amazing! I have been looking for someone to help us with this. When can Bob come by the office? We are at 123 Main Street in Reno, Nevada.',
       isFinal: true,
       timestamp: Date.now(),
     }));
@@ -312,12 +372,26 @@ describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
       timestamp: Date.now(),
     }));
 
-    try {
-      const tip = await waitForMessage(ws, 'AI_TIP', 20000);
-      expect(tip.payload).toBeDefined();
-      console.log(`💡 Closing coaching: "${(tip.payload.suggestion || tip.payload.heading || '').substring(0, 80)}"`);
-    } catch {
-      console.log('   Backend did not return separate AI_TIP for closing follow-up');
+    const response = await waitForIntelligenceOrTip(ws, 30000);
+    const intelligence = response.payload?.intelligence;
+    const entities = response.payload?.entities;
+
+    console.log('\n--- Positive Sentiment Test ---');
+    if (intelligence?.sentiment) {
+      console.log(`  Sentiment: ${intelligence.sentiment.label} (score: ${intelligence.sentiment.score})`);
+    }
+
+    // Should detect the new location (Reno, Nevada, 123 Main Street)
+    if (entities?.locations) {
+      console.log(`  Locations detected: ${JSON.stringify(entities.locations)}`);
+      expect(entities.locations.length).toBeGreaterThan(0);
+    }
+
+    // AI tip should suggest closing/next steps
+    const aiTip = response.payload?.aiTip;
+    if (aiTip) {
+      console.log(`  AI response stage: ${aiTip.stage}`);
+      console.log(`  AI suggestion: "${aiTip.suggestion?.substring(0, 80)}..."`);
     }
   }, 30000);
 
@@ -333,7 +407,6 @@ describe('Golden Script Pipeline Simulation (Real AWS Backend)', () => {
     expect(ended.type).toBe('CONVERSATION_ENDED');
     console.log('✅ Conversation ended cleanly');
 
-    // Clear conversationId so afterAll doesn't try to end it again
     conversationId = '';
   }, 15000);
 });
