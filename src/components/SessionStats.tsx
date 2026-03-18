@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Clock, MessageSquareText, Tag, Lightbulb } from 'lucide-react'
+import { Clock, MessageSquareText, Tag } from 'lucide-react'
 import { useSettingsStore } from '@/stores/settings-store'
 import type { Transcription, CoachingTip, CallSession, CallState } from '@/types'
 
@@ -17,7 +17,7 @@ function formatDuration(seconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
-export function SessionStats({ transcriptions, coachingTips, session, callState, compact }: SessionStatsProps) {
+export function SessionStats({ transcriptions, session, callState, compact }: SessionStatsProps) {
   const highlightKeywords = useSettingsStore(s => s.highlightKeywords)
   const [elapsed, setElapsed] = useState(0)
 
@@ -70,7 +70,6 @@ export function SessionStats({ transcriptions, coachingTips, session, callState,
     { icon: Clock, label: 'Duration', value: formatDuration(elapsed) },
     { icon: MessageSquareText, label: 'Words', value: String(wordCount) },
     { icon: Tag, label: 'Keywords', value: String(keywordCount) },
-    { icon: Lightbulb, label: 'Tips', value: String(coachingTips.length) },
   ]
 
   if (compact) {
@@ -89,7 +88,7 @@ export function SessionStats({ transcriptions, coachingTips, session, callState,
 
   return (
     <div className="border-t bg-card p-3">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {stats.map(({ icon: Icon, label, value }) => (
           <div key={label} className="flex flex-col items-center gap-1 px-2 py-2 bg-gray-800/50 rounded-lg border border-gray-700/50">
             <Icon className="w-4 h-4 text-gray-400" />
