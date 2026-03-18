@@ -1,11 +1,11 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { DynamoDBClient, PutItemCommand, GetItemCommand, QueryCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
 import { sendToConnection, WebSocketMessage } from '../shared/apigw-client';
+import { getSecret } from '../shared/secrets-client';
 
 const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' });
 const CALL_EVENTS_TABLE = process.env.CALL_EVENTS_TABLE!;
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE!;
-const CALLTOOLS_WEBHOOK_SECRET = process.env.CALLTOOLS_WEBHOOK_SECRET!;
 const WEBSOCKET_API_DOMAIN = process.env.WEBSOCKET_API_DOMAIN!;
 const WEBSOCKET_API_STAGE = process.env.WEBSOCKET_API_STAGE || 'production';
 
@@ -60,11 +60,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const authHeader = event.headers?.['Authorization'] || event.headers?.['authorization'];
   const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-  if (CALLTOOLS_WEBHOOK_SECRET) {
+  const callToolsWebhookSecret = await getSecret('CALLTOOLS_WEBHOOK_SECRET');
+  if (callToolsWebhookSecret) {
     const providedSecret = querySecret || bearerToken;
-    if (!providedSecret || providedSecret !== CALLTOOLS_WEBHOOK_SECRET) {
-      console.warn('[Webhook] Invalid or missing webhook secret');
+    if (!providedSecret) {
+      console.warn('[Webhook] Missing webhook secret');
       return response(401, { error: 'Unauthorized' });
+    }
+    if (providedSecret !== callToolsWebhookSecret) {
+      console.warn('[Webhook] Invalid webhook secret');
+      return response(403, { error: 'Forbidden' });
     }
   }
 

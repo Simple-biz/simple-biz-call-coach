@@ -42,6 +42,15 @@ vi.mock('@infra/lib/lambda/shared/apigw-client', () => ({
   sendToConnection: (...args: any[]) => mockSendToConnection(...args),
 }));
 
+vi.mock('@infra/lib/lambda/shared/secrets-client', () => ({
+  getSecret: vi.fn((key: string) => {
+    const secrets: Record<string, string> = {
+      CALLTOOLS_WEBHOOK_SECRET: 'test-secret-123',
+    };
+    return Promise.resolve(secrets[key] || '');
+  }),
+}));
+
 import { handler } from '@infra/lib/lambda/webhook/index';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 

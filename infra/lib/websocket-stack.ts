@@ -7,6 +7,7 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 export interface WebSocketStackProps extends cdk.StackProps {
@@ -25,12 +26,21 @@ export class WebSocketStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: WebSocketStackProps) {
     super(scope, id, props);
 
+    // Store API keys in Secrets Manager instead of plaintext env vars
+    const apiKeysSecret = new secretsmanager.Secret(this, 'ApiKeysSecret', {
+      secretName: 'call-coach/api-keys',
+      secretObjectValue: {
+        ANTHROPIC_API_KEY: cdk.SecretValue.unsafePlainText(props.anthropicApiKey),
+        BACKEND_API_KEY: cdk.SecretValue.unsafePlainText(props.backendApiKey),
+        CALLTOOLS_WEBHOOK_SECRET: cdk.SecretValue.unsafePlainText(props.callToolsWebhookSecret),
+      },
+    });
+
     // Shared Lambda environment variables
     const sharedEnv = {
       CONNECTIONS_TABLE: props.connectionsTable.tableName,
       DATABASE_URL: props.rdsConnectionString,
-      ANTHROPIC_API_KEY: props.anthropicApiKey,
-      BACKEND_API_KEY: props.backendApiKey,
+      API_KEYS_SECRET_ARN: apiKeysSecret.secretArn,
       CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
       CLAUDE_SONNET_MODEL: 'claude-haiku-4-5-20251001',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
@@ -330,7 +340,7 @@ export class WebSocketStack extends cdk.Stack {
       environment: {
         CONNECTIONS_TABLE: props.connectionsTable.tableName,
         CALL_EVENTS_TABLE: props.callEventsTable.tableName,
-        CALLTOOLS_WEBHOOK_SECRET: props.callToolsWebhookSecret,
+        API_KEYS_SECRET_ARN: apiKeysSecret.secretArn,
         WEBSOCKET_API_DOMAIN: webSocketDomain,
         WEBSOCKET_API_STAGE: 'production',
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
@@ -343,6 +353,12 @@ export class WebSocketStack extends cdk.Stack {
         externalModules: ['@aws-sdk/*'],
       },
     });
+
+    // Grant Secrets Manager read access to all Lambdas that need API keys
+    apiKeysSecret.grantRead(connectHandler);
+    apiKeysSecret.grantRead(transcriptHandler);
+    apiKeysSecret.grantRead(intelligenceHandler);
+    apiKeysSecret.grantRead(webhookHandler);
 
     // Grant DynamoDB permissions
     props.callEventsTable.grantReadWriteData(webhookHandler);

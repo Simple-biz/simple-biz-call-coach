@@ -17,9 +17,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import WebSocket from 'ws';
 
-// Production AWS config (same values as src/config/aws.ts)
-const AWS_WEBSOCKET_URL = 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
-const BACKEND_API_KEY = 'devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa';
+// Read from environment — never hardcode keys
+const AWS_WEBSOCKET_URL = process.env.AWS_WEBSOCKET_URL || 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
+const BACKEND_API_KEY = process.env.BACKEND_API_KEY || '';
 
 // Full simulated sales call — realistic agent/customer dialogue
 const CONVERSATION: Array<{ speaker: 'caller' | 'agent'; text: string; description: string }> = [

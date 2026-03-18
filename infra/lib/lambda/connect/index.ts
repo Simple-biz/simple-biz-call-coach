@@ -1,7 +1,6 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { saveConnection } from '../shared/dynamo-client';
-
-const BACKEND_API_KEY = process.env.BACKEND_API_KEY!;
+import { getSecret } from '../shared/secrets-client';
 
 export const handler = async (
   event: APIGatewayProxyEvent
@@ -12,8 +11,9 @@ export const handler = async (
   const apiKey = event.queryStringParameters?.apiKey;
 
   // Authenticate — reject unauthorized connections
-  if (!apiKey || apiKey !== BACKEND_API_KEY) {
-    console.error(`[Connect] Authentication failed. Got: ${apiKey ? apiKey.substring(0, 10) + '...' : 'NONE'}, Expected: ${BACKEND_API_KEY ? BACKEND_API_KEY.substring(0, 10) + '...' : 'UNDEF'}`);
+  const backendApiKey = await getSecret('BACKEND_API_KEY');
+  if (!apiKey || apiKey !== backendApiKey) {
+    console.error(`[Connect] Authentication failed. Got: ${apiKey ? apiKey.substring(0, 10) + '...' : 'NONE'}, Expected: ${backendApiKey ? backendApiKey.substring(0, 10) + '...' : 'UNDEF'}`);
     return { statusCode: 401, body: 'Unauthorized' };
   }
 
