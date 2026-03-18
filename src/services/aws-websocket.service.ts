@@ -265,9 +265,9 @@ export class AWSWebSocketService {
   }
 
   /**
-   * Request intelligence update (Auto-analysis)
+   * Request intelligence update (auto-analysis — skips AI tip generation)
    */
-  async getIntelligence(conversationId: string): Promise<void> {
+  async getIntelligence(conversationId: string, skipTip = true): Promise<void> {
     if (!this.isConnected()) {
       console.warn('⚠️ [AWSWebSocket] Cannot get intelligence - not connected');
       return;
@@ -277,11 +277,12 @@ export class AWSWebSocketService {
       const message = {
         action: 'getIntelligence',
         conversationId,
+        skipTip,
         timestamp: Date.now(),
       };
 
       await this.sendMessage(message);
-      console.log(`🧠 [AWSWebSocket] Intelligence requested for: ${conversationId}`);
+      console.log(`🧠 [AWSWebSocket] Intelligence requested (skipTip: ${skipTip})`);
     } catch (error: any) {
       console.error('❌ [AWSWebSocket] Failed to request intelligence:', error);
     }
@@ -417,6 +418,20 @@ export class AWSWebSocketService {
           if (this.intelligenceListener) {
             console.log('🧠 [AWSWebSocket] Intelligence update received');
             this.intelligenceListener(data.payload);
+          }
+
+          // Also fire AI tip if included in the intelligence response
+          if (data.payload.aiTip && this.aiTipListener) {
+            const tip: AIRecommendation = {
+              heading: data.payload.aiTip.heading || 'Suggestion',
+              stage: data.payload.aiTip.stage || 'GENERAL',
+              context: data.payload.aiTip.context || '',
+              options: [{ label: 'Recommended', script: data.payload.aiTip.suggestion }],
+              recommendationId: data.payload.aiTip.recommendationId || '',
+              timestamp: data.payload.timestamp || Date.now(),
+            };
+            this.aiTipListener(tip);
+            console.log(`💡 [AWSWebSocket] AI Suggested Line: ${tip.heading}`);
           }
           break;
 

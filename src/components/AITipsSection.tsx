@@ -23,9 +23,18 @@ export function AITipsSection() {
   const lastAIUpdate = useCallStore((state) => state.lastAIUpdate);
   const [showHistory, setShowHistory] = useState(false);
   const [countdown, setCountdown] = useState(30);
+  const [dismissed, setDismissed] = useState(false);
+  const [dismissedTipId, setDismissedTipId] = useState<string | null>(null);
 
   // Get the most recent tip
   const latestTip = aiTips.length > 0 ? aiTips[aiTips.length - 1] : null;
+
+  // Reset dismiss when a new tip arrives
+  useEffect(() => {
+    if (latestTip && latestTip.id !== dismissedTipId) {
+      setDismissed(false);
+    }
+  }, [latestTip?.id, dismissedTipId]);
 
   // Countdown timer for next update
   useEffect(() => {
@@ -61,7 +70,7 @@ export function AITipsSection() {
       reconnecting: { color: 'bg-orange-500', text: 'Reconnecting...', icon: '⟳' },
     };
 
-    const config = statusConfig[aiBackendStatus];
+    const config = statusConfig[aiBackendStatus] || statusConfig.disconnected;
 
     return (
       <div className="flex items-center gap-2 mb-4">
@@ -245,16 +254,22 @@ export function AITipsSection() {
   return (
     <motion.div
       key={latestTip.id}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
-      className="bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4 shadow-sm"
+      initial={{ opacity: 0, x: 100 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.3, ease: "easeIn" }}
+      className="bg-[#E3F2FD] border border-blue-200 rounded-lg p-4 shadow-sm"
     >
       {renderStatusBadge()}
-
+      
+      {dismissed ? (
+        <div className="flex flex-col items-center justify-center py-4 text-center">
+          <p className="text-xs text-gray-500">Tip dismissed. Next tip incoming...</p>
+        </div>
+      ) : (
+        <>
       {/* AI Tip Card with 3 Options */}
       <div className="space-y-3">
-        {/* Heading + Stage */}
+        {/* Heading + Stage + Dismiss Button */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -269,7 +284,7 @@ export function AITipsSection() {
             >
               💡
             </motion.span>
-            <h3 className="text-lg font-bold text-purple-900 uppercase tracking-wide">
+            <h3 className="text-lg font-bold text-blue-900 uppercase tracking-wide">
               {latestTip.heading}
             </h3>
           </div>
@@ -277,10 +292,20 @@ export function AITipsSection() {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ delay: 0.3, type: "spring" }}
-            className="text-xs px-2 py-1 bg-purple-200 text-purple-800 rounded-full font-semibold"
+            className="text-xs px-2 py-1 bg-blue-200 text-blue-800 rounded-full font-semibold"
           >
             {latestTip.stage?.replace('_', ' ')}
           </motion.span>
+          <button
+            onClick={() => {
+              setDismissed(true);
+              setDismissedTipId(latestTip.id);
+            }}
+            className="ml-2 text-gray-400 hover:text-gray-600 transition-colors"
+            title="Dismiss tip"
+          >
+            ✕
+          </button>
         </motion.div>
 
         {/* Context - Why this recommendation */}
@@ -289,7 +314,7 @@ export function AITipsSection() {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
-            className="bg-white/60 rounded-lg p-2 border border-purple-100"
+            className="bg-white/60 rounded-lg p-2 border border-blue-100"
           >
             <p className="text-xs italic text-gray-700">
               💭 {latestTip.context}
@@ -303,7 +328,7 @@ export function AITipsSection() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.5 }}
-            className="text-xs font-semibold text-purple-700 uppercase tracking-wide"
+            className="text-xs font-semibold text-blue-700 uppercase tracking-wide"
           >
             Choose your response:
           </motion.p>
@@ -327,10 +352,10 @@ export function AITipsSection() {
                   className={`
                     w-full text-left p-3 rounded-lg border-2 transition-all duration-200
                     ${isSelected
-                      ? 'bg-purple-600 border-purple-700 text-white shadow-md'
+                      ? 'bg-blue-600 border-blue-700 text-white shadow-md'
                       : isDisabled
                         ? 'bg-gray-100 border-gray-200 text-gray-400 cursor-not-allowed opacity-60'
-                        : 'bg-white border-purple-300 hover:border-purple-500 hover:bg-purple-50 cursor-pointer hover:shadow-lg'
+                        : 'bg-white border-blue-300 hover:border-blue-500 hover:bg-blue-50 cursor-pointer hover:shadow-lg'
                     }
                   `}
                 >
@@ -346,7 +371,7 @@ export function AITipsSection() {
                       </motion.span>
                     )}
                     <div className="flex-1">
-                      <div className={`text-xs font-semibold mb-1 ${isSelected ? 'text-purple-100' : 'text-purple-700'}`}>
+                      <div className={`text-xs font-semibold mb-1 ${isSelected ? 'text-blue-100' : 'text-blue-700'}`}>
                         {option.label}
                       </div>
                       <div className={`text-sm ${isSelected ? 'font-medium' : 'text-gray-800'}`}>
@@ -361,7 +386,7 @@ export function AITipsSection() {
         </div>
 
         {/* Metadata */}
-        <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-purple-200">
+        <div className="flex items-center justify-between text-xs text-gray-500 pt-2 border-t border-blue-200">
           <span className="flex items-center gap-1">
             <span>⏱️</span>
             <span>Updated {formatTimestamp(latestTip.timestamp)}</span>
@@ -369,7 +394,7 @@ export function AITipsSection() {
           {aiTips.length > 1 && (
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className="bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-medium hover:bg-purple-200 transition-colors cursor-pointer"
+              className="bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium hover:bg-blue-200 transition-colors cursor-pointer"
               title={showHistory ? "Hide tips history" : "Show tips history"}
             >
               {aiTips.length} tips {showHistory ? '▲' : '▼'}
@@ -396,7 +421,7 @@ export function AITipsSection() {
           {/* Progress bar */}
           <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
             <motion.div
-              className="h-full bg-purple-400"
+              className="h-full bg-blue-400"
               animate={{ width: `${(countdown / 30) * 100}%` }}
               transition={{ duration: 1 }}
             />
@@ -405,8 +430,8 @@ export function AITipsSection() {
 
         {/* Tips History (Expandable) */}
         {showHistory && aiTips.length > 1 && (
-          <div className="mt-4 pt-4 border-t border-purple-200 space-y-2">
-            <h4 className="text-xs font-semibold text-purple-700 uppercase tracking-wide mb-3">
+          <div className="mt-4 pt-4 border-t border-blue-200 space-y-2">
+            <h4 className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">
               Previous Tips ({aiTips.length - 1})
             </h4>
             <div className="space-y-2 max-h-64 overflow-y-auto">
@@ -416,10 +441,10 @@ export function AITipsSection() {
                 .map((tip) => (
                   <div
                     key={tip.id}
-                    className="bg-white border border-purple-100 rounded-lg p-3 text-sm hover:border-purple-300 transition-colors"
+                    className="bg-white border border-blue-100 rounded-lg p-3 text-sm hover:border-blue-300 transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="text-xs font-bold text-purple-700 uppercase">
+                      <span className="text-xs font-bold text-blue-700 uppercase">
                         {tip.heading}
                       </span>
                       <span className="text-xs text-gray-400">
@@ -429,7 +454,7 @@ export function AITipsSection() {
                     {/* Show selected option or all options */}
                     {tip.selectedOption ? (
                       <div className="text-xs text-gray-700 leading-relaxed">
-                        <span className="font-semibold text-purple-600">
+                        <span className="font-semibold text-blue-600">
                           {tip.options[tip.selectedOption - 1].label}:
                         </span>{' '}
                         "{tip.options[tip.selectedOption - 1].script}"
@@ -445,6 +470,8 @@ export function AITipsSection() {
           </div>
         )}
       </div>
+      </>
+    )}
     </motion.div>
   );
 }

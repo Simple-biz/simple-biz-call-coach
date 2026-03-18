@@ -863,6 +863,7 @@ export default function SidePanel() {
                 />
               </div>
 
+
               {/* Chat Thread with Manual Transcripts */}
               <ChatThread
                 transcriptions={transcriptions}
@@ -920,6 +921,7 @@ export default function SidePanel() {
                   isRecording={callState === "active"}
                 />
               </div>
+
 
               {/* Chat Thread with Live Transcripts */}
               <ChatThread
