@@ -977,7 +977,7 @@ async function connectAIBackend() {
     })
 
     // Webhook STATUS_UPDATE listener (call start/end from CallTools resthook)
-    awsWebSocketService.setStatusUpdateListener((payload) => {
+    awsWebSocketService.setStatusUpdateListener(async (payload) => {
       console.log(`📞 [Background] Webhook STATUS_UPDATE: ${payload.event} (callId: ${payload.callId})`)
 
       if (payload.event === 'CALL_STARTED') {
@@ -1022,6 +1022,12 @@ async function connectAIBackend() {
 
         // Notify content script to suppress DOM polling
         notifyContentScript({ type: 'WEBHOOK_CALL_STARTED', payload })
+
+        // Auto-start capture if coaching was armed (critical for auto-dial campaigns)
+        if (extensionState.coachingPending && extensionState.tabId) {
+          console.log('🎙️ [Background] Webhook CALL_STARTED + coaching pending — auto-starting capture')
+          await startCaptureAndCoaching(extensionState.tabId)
+        }
 
       } else if (payload.event === 'CALL_ENDED') {
         if (!extensionState.isOnCall) {
@@ -1141,17 +1147,25 @@ async function handleCallEnd(tabId?: number) {
     })
 
     // 4. Update state
+    // Keep coachingPending armed if call was webhook-detected (auto-dial campaign)
+    // so the next auto-dialed call auto-starts capture
+    const keepCoachingArmed = extensionState.callDetectionSource === 'webhook'
+    if (keepCoachingArmed) {
+      console.log('🔄 [Background] Webhook call ended — keeping coaching armed for next auto-dial')
+    }
+
     await updateExtensionState({
       isRecording: false,
       isOnCall: false,
-      coachingPending: false,
-      tabId: null,
+      coachingPending: keepCoachingArmed,
+      tabId: keepCoachingArmed ? extensionState.tabId : null,
       currentStreamId: null,
       deepgramStatus: 'disconnected',
       aiBackendStatus: 'disconnected',
       remoteStreamActive: false,
       localStreamActive: false,
       conversationId: null,
+      callDetectionSource: null,
     })
 
     // 5. Notify UI

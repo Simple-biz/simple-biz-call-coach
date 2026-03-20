@@ -34,6 +34,7 @@ const manifest: ManifestV3Export = {
       matches: ["*://*.calltools.io/*"],
       js: ["src/content/index.ts"],
       run_at: "document_start",
+      all_frames: true,
     },
   ],
   action: {
