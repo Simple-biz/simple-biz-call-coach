@@ -1164,18 +1164,16 @@ async function handleCallEnd(tabId?: number) {
     })
 
     // 4. Update state
-    // Keep coachingPending armed if call was webhook-detected (auto-dial campaign)
-    // so the next auto-dialed call auto-starts capture
-    const keepCoachingArmed = extensionState.callDetectionSource === 'webhook'
-    if (keepCoachingArmed) {
-      console.log('🔄 [Background] Webhook call ended — keeping coaching armed for next auto-dial')
-    }
+    // Always keep coaching armed so the next call auto-starts
+    // (no need for agent to click "Start AI Coaching" again)
+    const savedTabId = extensionState.tabId
+    console.log('🔄 [Background] Call ended — keeping coaching armed for next call')
 
     await updateExtensionState({
       isRecording: false,
       isOnCall: false,
-      coachingPending: keepCoachingArmed,
-      tabId: keepCoachingArmed ? extensionState.tabId : null,
+      coachingPending: true,
+      tabId: savedTabId,
       currentStreamId: null,
       deepgramStatus: 'disconnected',
       aiBackendStatus: 'disconnected',
