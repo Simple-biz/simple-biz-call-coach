@@ -66,6 +66,9 @@ interface ExtensionState {
   coachingPending?: boolean
 }
 
+// Webhook destination matching — content script reports the number being dialed
+let expectedDestination: string | null = null
+
 // ============================================================================
 // STATE MANAGEMENT
 // ============================================================================
@@ -223,6 +226,14 @@ chrome.runtime.onConnect.addListener(port => {
         await handleCallEnd(tabId)
         stopAutoAnalysisLoop();
         stopKeepAlive()
+      }
+
+      if (message.type === 'DESTINATION_NUMBER_DETECTED') {
+        const digits = message.destination?.replace(/\D/g, '') || ''
+        if (digits.length >= 10) {
+          expectedDestination = digits
+          console.log(`📱 [Background] Expected destination set: ${digits}`)
+        }
       }
     })
 
@@ -978,58 +989,64 @@ async function connectAIBackend() {
 
     // Webhook STATUS_UPDATE listener (call start/end from CallTools resthook)
     awsWebSocketService.setStatusUpdateListener(async (payload) => {
-      console.log(`📞 [Background] Webhook STATUS_UPDATE: ${payload.event} (callId: ${payload.callId})`)
-
       if (payload.event === 'CALL_STARTED') {
-        // Don't start a duplicate call if already on one
+        // Already on a call — enrich with callId if within 15s
         if (extensionState.isOnCall) {
-          console.log('ℹ️ [Background] Already on call, enriching with webhook callId')
-          updateExtensionState({
-            callToolsCallId: payload.callId,
-            callDetectionSource: 'webhook',
-          })
+          if (Date.now() - (extensionState.startTime || 0) < 15000) {
+            updateExtensionState({
+              callToolsCallId: payload.callId,
+              callDetectionSource: 'webhook',
+            })
+          }
           return
         }
 
-        console.log('📞 [Background] Webhook detected CALL_STARTED — triggering call lifecycle')
-        updateExtensionState({
-          isOnCall: true,
-          startTime: Date.now(),
-          callToolsCallId: payload.callId,
-          callDetectionSource: 'webhook',
-          conversationId: null,
-        })
+        // DESTINATION MATCHING: If we know the number being dialed,
+        // match it against the webhook destination for instant detection
+        if (expectedDestination && payload.destination && extensionState.coachingPending) {
+          const webhookDigits = (payload.destination || '').replace(/\D/g, '')
+          // Match last 10 digits (ignore country code differences)
+          const expectedLast10 = expectedDestination.slice(-10)
+          const webhookLast10 = webhookDigits.slice(-10)
 
-        startKeepAlive()
+          if (expectedLast10 === webhookLast10 && expectedLast10.length >= 10) {
+            console.log(`🎯 [Background] Webhook MATCHED destination ${webhookLast10} — instant call detection!`)
 
-        // Clear previous call data
-        chrome.storage.local.set({
-          'callStoreState': JSON.stringify({
-            transcriptions: [],
-            coachingTips: [],
-            audioLevel: 0
-          })
-        })
+            updateExtensionState({
+              isOnCall: true,
+              startTime: Date.now(),
+              callToolsCallId: payload.callId,
+              callDetectionSource: 'webhook',
+              conversationId: null,
+            })
 
-        broadcastToUI({
-          type: 'CALL_DETECTED',
-          tabId: extensionState.tabId,
-          timestamp: Date.now(),
-          clearPreviousData: true,
-          source: 'webhook',
-          callToolsCallId: payload.callId,
-        })
+            startKeepAlive()
+            expectedDestination = null // Clear after match
 
-        // Notify content script to suppress DOM polling
-        notifyContentScript({ type: 'WEBHOOK_CALL_STARTED', payload })
+            broadcastToUI({
+              type: 'CALL_DETECTED',
+              tabId: extensionState.tabId,
+              timestamp: Date.now(),
+              clearPreviousData: true,
+              source: 'webhook',
+              callToolsCallId: payload.callId,
+            })
 
-        // Auto-start capture if coaching was armed (critical for auto-dial campaigns)
-        if (extensionState.coachingPending && extensionState.tabId) {
-          console.log('🎙️ [Background] Webhook CALL_STARTED + coaching pending — auto-starting capture')
-          await startCaptureAndCoaching(extensionState.tabId)
+            notifyContentScript({ type: 'WEBHOOK_CALL_STARTED', payload })
+
+            if (extensionState.tabId) {
+              console.log('🎙️ [Background] Webhook match — auto-starting capture')
+              await startCaptureAndCoaching(extensionState.tabId)
+            }
+            return
+          }
         }
 
-      } else if (payload.event === 'CALL_ENDED') {
+        // No match — ignore (it's another agent's call)
+        return
+      }
+
+      if (payload.event === 'CALL_ENDED') {
         if (!extensionState.isOnCall) {
           console.log('ℹ️ [Background] Not on a call, ignoring webhook CALL_ENDED')
           return

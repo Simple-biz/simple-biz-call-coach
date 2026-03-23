@@ -461,6 +461,79 @@ function isCallActive(): boolean {
 }
 
 // ============================================================================
+// DESTINATION NUMBER EXTRACTION
+// ============================================================================
+
+/**
+ * Extract the destination phone number from CallTools DOM.
+ * CallTools displays the dialed number in various places during a call.
+ * Returns normalized number (digits only) or null if not found.
+ */
+function extractDestinationNumber(): string | null {
+  // Common selectors where CallTools displays the phone number
+  const selectors = [
+    // Manual dialer input field (captures number BEFORE call starts)
+    'input[type="tel"]',
+    'input[placeholder*="phone" i]',
+    'input[placeholder*="number" i]',
+    'input[placeholder*="dial" i]',
+    // Phone number display during active call
+    '[class*="phone-number"]',
+    '[class*="phoneNumber"]',
+    '[class*="destination"]',
+    '[class*="contact-number"]',
+    // Contact card / lead preview (auto-dial shows number here)
+    '[class*="lead-phone"]',
+    '[class*="contact-phone"]',
+    '[class*="caller-id"]',
+    // Generic phone display areas
+    '.call-info [class*="number"]',
+    '.contact-info [class*="number"]',
+  ]
+
+  for (const selector of selectors) {
+    const el = document.querySelector(selector)
+    if (el) {
+      const text = (el as HTMLInputElement).value || el.textContent || ''
+      const digits = text.replace(/\D/g, '')
+      if (digits.length >= 10) {
+        console.log(`📱 [Content] Destination number found: ${digits} (via ${selector})`)
+        return digits
+      }
+    }
+  }
+
+  // Fallback: scan all visible text for phone number patterns near the call UI
+  const allText = document.body.innerText || ''
+  const phoneMatch = allText.match(/(?:dialing|calling|destination|to:?)\s*[:\s]*([+\d().\s-]{10,})/i)
+  if (phoneMatch) {
+    const digits = phoneMatch[1].replace(/\D/g, '')
+    if (digits.length >= 10) {
+      console.log(`📱 [Content] Destination number found via text scan: ${digits}`)
+      return digits
+    }
+  }
+
+  return null
+}
+
+// Also continuously track the destination number for webhook matching
+let currentDestinationNumber: string | null = null
+
+// Report destination number to background every poll cycle (for webhook matching)
+function reportDestinationNumber() {
+  const number = extractDestinationNumber()
+  if (number && number !== currentDestinationNumber) {
+    currentDestinationNumber = number
+    sendToBackground({
+      type: 'DESTINATION_NUMBER_DETECTED',
+      destination: number,
+      timestamp: Date.now(),
+    })
+  }
+}
+
+// ============================================================================
 // CALL STATE MONITORING WITH DEBOUNCING
 // ============================================================================
 
@@ -554,10 +627,13 @@ function checkCallStatus(): void {
       stateConfirmationCount = 0
 
       if (currentCallState) {
-        console.log('📞 [Content] Call STARTED - notifying background')
+        // Try to extract the destination phone number from CallTools DOM
+        const destinationNumber = extractDestinationNumber()
+        console.log(`📞 [Content] Call STARTED - notifying background (destination: ${destinationNumber || 'unknown'})`)
         sendToBackground({
           type: 'CALL_STARTED',
           timestamp: Date.now(),
+          destination: destinationNumber,
         })
       } else {
         console.log('📞 [Content] Call ENDED - notifying background')
@@ -574,7 +650,11 @@ function checkCallStatus(): void {
   }
 }
 
+// Call detection polls every 2s
 setInterval(checkCallStatus, CHECK_INTERVAL)
+
+// Destination number extraction polls every 500ms (faster — captures number before call connects)
+setInterval(reportDestinationNumber, 500)
 
 console.log('✅ [Content] Call detection initialized')
 console.log(

@@ -461,7 +461,10 @@ export class AWSWebSocketService {
             console.error('❌ [AWSWebSocket] STATUS_UPDATE missing payload');
             break;
           }
-          console.log(`📞 [AWSWebSocket] Status update: ${data.payload.event} (callId: ${data.payload.callId})`);
+          // Only log non-CALL_STARTED events (CALL_STARTED floods from other agents)
+          if (data.payload.event !== 'CALL_STARTED') {
+            console.log(`📞 [AWSWebSocket] Status update: ${data.payload.event} (callId: ${data.payload.callId})`);
+          }
           if (this.statusUpdateListener) {
             this.statusUpdateListener(data.payload);
           }
