@@ -313,6 +313,23 @@ window.addEventListener('message', (event) => {
       console.log('🔔 [Content] Notifying background that streams are ready')
       handleWebRTCStreamsReady(data)
     }
+
+    if (type === 'ALL_TRACKS_ENDED') {
+      // INSTANT call end detection via WebRTC — no DOM polling delay
+      console.log('📞 [Content] WebRTC ALL_TRACKS_ENDED — instant call end detection')
+      webrtcStreamsReady = false
+      if (lastConfirmedCallState) {
+        lastCallState = false
+        lastConfirmedCallState = false
+        stateConfirmationCount = 0
+        console.log('📞 [Content] Call ENDED (WebRTC instant) - notifying background')
+        sendToBackground({
+          type: 'CALL_ENDED',
+          timestamp: Date.now(),
+          source: 'webrtc',
+        })
+      }
+    }
   }
 
   // Handle audio processor messages (page context)
@@ -541,7 +558,7 @@ let lastCallState = false
 let lastConfirmedCallState = false
 let stateConfirmationCount = 0
 const CONFIRMATION_THRESHOLD = 3
-const INACTIVE_THRESHOLD = 5 // Require MORE confirmations to mark as inactive
+const INACTIVE_THRESHOLD = 2 // Reduced from 5 — WebRTC handles instant detection, DOM is backup
 const CHECK_INTERVAL = 2000
 
 // Webhook-aware detection state
