@@ -89,9 +89,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: validationError });
   }
 
+  // Log raw payload keys to debug agent ID field
+  console.log(`[Webhook] Raw payload keys:`, Object.keys(payload));
+  console.log(`[Webhook] Raw payload:`, JSON.stringify(payload));
+
   const eventType = classifyEvent(payload);
   const callId = payload.uuid;
-  const agentId = payload.app_user || 'unknown';
+  // CallTools sends agent UUID as either app_user or app_user_id depending on context
+  const agentId = payload.app_user || (payload as any).app_user_id || 'unknown';
 
   console.log(`[Webhook] Processing ${eventType} for agent ${agentId}, call ${callId}`);
 
@@ -128,12 +133,7 @@ function validatePayload(payload: any): string | null {
   if (!payload.uuid || typeof payload.uuid !== 'string') {
     return 'Missing or invalid uuid';
   }
-  if (payload.id === undefined || typeof payload.id !== 'number') {
-    return 'Missing or invalid id';
-  }
-  if (!payload.start || typeof payload.start !== 'string') {
-    return 'Missing or invalid start time';
-  }
+  // id and start are optional for auto-dial campaigns (may arrive later)
   return null;
 }
 
@@ -160,7 +160,7 @@ async function storeCallEvent(
   payload: CallToolsCallPayload
 ): Promise<void> {
   const ttl = Math.floor(Date.now() / 1000) + 86400; // 24 hours
-  const timestamp = new Date(payload.start).getTime();
+  const timestamp = payload.start ? new Date(payload.start).getTime() : Date.now();
 
   const item: Record<string, any> = {
     callId: { S: callId },
@@ -168,22 +168,17 @@ async function storeCallEvent(
     agentId: { S: agentId },
     timestamp: { N: timestamp.toString() },
     ttl: { N: ttl.toString() },
-    callToolsId: { N: payload.id.toString() },
-    destination: { S: payload.destination },
-    source: { S: payload.source },
-    callType: { S: payload.call_type },
-    inbound: { BOOL: payload.inbound },
   };
 
-  if (payload.duration) {
-    item.duration = { N: payload.duration.toString() };
-  }
-  if (payload.campaign) {
-    item.campaignId = { N: payload.campaign.toString() };
-  }
-  if (payload.system_disposition) {
-    item.systemDisposition = { S: payload.system_disposition };
-  }
+  // Only add fields that exist (auto-dial may send partial payloads)
+  if (payload.id != null) item.callToolsId = { N: payload.id.toString() };
+  if (payload.destination) item.destination = { S: payload.destination };
+  if (payload.source) item.source = { S: payload.source };
+  if (payload.call_type) item.callType = { S: payload.call_type };
+  if (payload.inbound != null) item.inbound = { BOOL: payload.inbound };
+  if (payload.duration) item.duration = { N: payload.duration.toString() };
+  if (payload.campaign) item.campaignId = { N: payload.campaign.toString() };
+  if (payload.system_disposition) item.systemDisposition = { S: payload.system_disposition };
 
   try {
     await dynamoClient.send(new PutItemCommand({
