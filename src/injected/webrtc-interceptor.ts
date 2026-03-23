@@ -56,6 +56,13 @@ function handleRemoteAudioTrack(track, stream) {
 
   interceptedStreams.set(`remote-${track.id}`, streamData);
 
+  // Listen for track ended — instant call end detection
+  track.onended = () => {
+    console.log('[WebRTC Interceptor] REMOTE track ENDED:', track.id);
+    notifyContentScript('REMOTE_TRACK_ENDED', { trackId: track.id, timestamp: Date.now() });
+    checkAllTracksEnded();
+  };
+
   // Notify content script
   notifyContentScript('REMOTE_AUDIO_TRACK', streamData);
 
@@ -91,11 +98,34 @@ function handleLocalAudioTrack(track, stream) {
 
   interceptedStreams.set(`local-${track.id}`, streamData);
 
+  // Listen for track ended — instant call end detection
+  track.onended = () => {
+    console.log('[WebRTC Interceptor] LOCAL track ENDED:', track.id);
+    notifyContentScript('LOCAL_TRACK_ENDED', { trackId: track.id, timestamp: Date.now() });
+    checkAllTracksEnded();
+  };
+
   // Notify content script
   notifyContentScript('LOCAL_AUDIO_TRACK', streamData);
 
   // Check if we have both streams
   checkAndNotifyReady();
+}
+
+function checkAllTracksEnded() {
+  // Check if ALL audio tracks have ended (call is over)
+  const remoteEnded = !remoteAudioStream || remoteAudioStream.getTracks().every(t => t.readyState === 'ended');
+  const localEnded = !localAudioStream || localAudioStream.getTracks().every(t => t.readyState === 'ended');
+
+  if (remoteEnded && localEnded && (remoteAudioStream || localAudioStream)) {
+    console.log('[WebRTC Interceptor] ALL tracks ended — call is OVER');
+    notifyContentScript('ALL_TRACKS_ENDED', { timestamp: Date.now() });
+
+    // Reset streams for next call
+    remoteAudioStream = null;
+    localAudioStream = null;
+    interceptedStreams.clear();
+  }
 }
 
 function checkAndNotifyReady() {
