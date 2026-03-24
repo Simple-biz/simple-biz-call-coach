@@ -206,9 +206,30 @@ chrome.runtime.onConnect.addListener(port => {
       // Handle messages same as runtime.onMessage
       if (message.type === 'CALL_STARTED') {
         console.log('📞 [Background] Call STARTED detected (via port)')
+
+        // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
+        console.log('🧹 [Background] Clearing ALL data from previous call')
+        extensionState.transcriptions = []
+        extensionState.coachingTips = []
+        await chrome.storage.local.set({
+          'callStoreState': JSON.stringify({
+            transcriptions: [],
+            coachingTips: [],
+            audioLevel: 0,
+            aiTips: [],
+            intelligence: null,
+            entities: null,
+            lastAIUpdate: null,
+            aiConversationId: null,
+            session: null,
+          })
+        })
+        broadcastToUI({ type: 'CLEAR_SESSION', timestamp: Date.now() })
+
         await updateExtensionState({
           isOnCall: true,
           tabId: tabId,
+          conversationId: null,
         })
         broadcastToUI({ type: 'CALL_STARTED', tabId })
         console.log(`✅ [Background] Call state updated (Tab: ${tabId})`)
@@ -478,15 +499,26 @@ async function processMessage(message: any, sender: any) {
         return
       }
 
-      // ✅ CLEAR PREVIOUS CALL DATA (fresh start for new call)
-      console.log('🧹 [Background] Clearing transcriptions and AI tips from previous call')
+      // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
+      console.log('🧹 [Background] Clearing ALL data from previous call')
+      extensionState.transcriptions = []
+      extensionState.coachingTips = []
       await chrome.storage.local.set({
         'callStoreState': JSON.stringify({
           transcriptions: [],
           coachingTips: [],
-          audioLevel: 0
+          audioLevel: 0,
+          aiTips: [],
+          intelligence: null,
+          entities: null,
+          lastAIUpdate: null,
+          aiConversationId: null,
+          callStartTime: null,
+          callEndTime: null,
+          session: null,
         })
       })
+      broadcastToUI({ type: 'CLEAR_SESSION', timestamp: Date.now() })
 
       // ✅ UPDATE STATE IMMEDIATELY
       // Skip DOM detection if webhook already detected this call
