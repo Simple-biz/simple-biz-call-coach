@@ -35,6 +35,9 @@ npm-debug.log*
 .cache/
 .chrome-dev-profile/
 
+# Manual test scripts with credentials
+tests/manual/reload-test-contact.cjs
+
 # Claude Code / god-mode (local only, never commit)
 .claude/
 .bmad/

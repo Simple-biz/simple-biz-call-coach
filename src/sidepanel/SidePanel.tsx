@@ -314,6 +314,21 @@ export default function SidePanel() {
           console.log("📞 [SidePanel] Call detected, waiting for user action");
           break;
 
+        case "CLEAR_SESSION":
+          console.log("🧹 [SidePanel] Clearing all data for new call");
+          useCallStore.setState({
+            transcriptions: [],
+            coachingTips: [],
+            aiTips: [],
+            intelligence: null,
+            entities: null,
+            lastAIUpdate: null,
+            aiConversationId: null,
+            session: null,
+            audioLevel: 0,
+          });
+          break;
+
         case "CALL_START_FAILED":
           console.error("❌ [SidePanel] Call start failed:", message.error);
           setDeepgramStatus("error");
