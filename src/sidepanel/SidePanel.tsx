@@ -326,6 +326,7 @@ export default function SidePanel() {
             aiConversationId: null,
             session: null,
             audioLevel: 0,
+            currentScriptOptions: [],
           });
           break;
 
