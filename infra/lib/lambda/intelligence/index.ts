@@ -3,12 +3,15 @@ import { getConnection } from '../shared/dynamo-client';
 import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
 import { generateConversationIntelligence } from '../shared/intelligence-client';
 import { generateAITip } from '../shared/claude-client-optimized';
+import { getCachedIntelligence, setCachedIntelligence } from './cache';
 
 /**
  * IntelligenceHandler Lambda Function
  *
- * Returns data via route response (API Gateway sends Lambda response body
- * back to the client automatically). No sendToConnection needed.
+ * Performance optimization: caches intelligence results in Lambda memory.
+ * Auto-analysis (skipTip=true) runs every 10s and refreshes the cache.
+ * Manual tip requests (skipTip=false) reuse cached intelligence to skip
+ * the redundant Claude call, cutting response time by ~1-2 seconds.
  */
 
 export const handler = async (
@@ -53,15 +56,31 @@ export const handler = async (
 
     console.log(`[Intelligence] Fetched ${transcripts.length} transcripts (${transcriptCount} total) for analysis`);
 
-    // 2. Generate intelligence using Claude Haiku 4.5 (with prompt caching)
-    const aiStartTime = Date.now();
-    const intelligence = await generateConversationIntelligence({
-      conversationId,
-      transcripts
-    });
-    const aiLatency = Date.now() - aiStartTime;
+    // 2. Check if we can use cached intelligence (for manual tip requests)
+    const cached = !skipTip ? getCachedIntelligence(conversationId) : null;
 
-    console.log(`[Intelligence] Analysis complete in ${aiLatency}ms, model: ${intelligence.model}`);
+    let intelligence;
+    let cacheHit = false;
+
+    if (cached) {
+      // FAST PATH: Manual tip request with fresh cached intelligence — skip Claude call
+      intelligence = cached;
+      cacheHit = true;
+      console.log(`[Intelligence] Using cached intelligence — skipping redundant Claude call`);
+    } else {
+      // NORMAL PATH: Run intelligence analysis (auto-analysis or no cache available)
+      const aiStartTime = Date.now();
+      intelligence = await generateConversationIntelligence({
+        conversationId,
+        transcripts
+      });
+      const aiLatency = Date.now() - aiStartTime;
+      console.log(`[Intelligence] Analysis complete in ${aiLatency}ms, model: ${intelligence.model}`);
+
+      // Update cache
+      setCachedIntelligence(conversationId, intelligence);
+      console.log(`[Intelligence] Cache updated for conversation: ${conversationId}`);
+    }
 
     // 3. Generate AI tip from golden script (only if not skipped)
     let aiTipPayload: any = undefined;
@@ -124,7 +143,7 @@ export const handler = async (
     }
 
     const totalLatency = Date.now() - requestStartTime;
-    console.log(`[Intelligence] Done in ${totalLatency}ms`);
+    console.log(`[Intelligence] Done in ${totalLatency}ms (cache ${cacheHit ? 'HIT' : 'MISS'})`);
 
     // 4. Return intelligence (+ AI tip if requested)
     return {
