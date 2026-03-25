@@ -222,6 +222,7 @@ chrome.runtime.onConnect.addListener(port => {
             lastAIUpdate: null,
             aiConversationId: null,
             session: null,
+            currentScriptOptions: [],
           })
         })
         broadcastToUI({ type: 'CLEAR_SESSION', timestamp: Date.now() })
@@ -516,6 +517,7 @@ async function processMessage(message: any, sender: any) {
           callStartTime: null,
           callEndTime: null,
           session: null,
+          currentScriptOptions: [],
         })
       })
       broadcastToUI({ type: 'CLEAR_SESSION', timestamp: Date.now() })
