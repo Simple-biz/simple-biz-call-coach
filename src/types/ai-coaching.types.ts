@@ -44,7 +44,7 @@ export interface AIState {
   error: string | null;
 }
 
-// WebSocket Event Payloads
+// WebSocket Event Payloads for faster loading times and reduced bandwidth (only essential data sent)
 
 export interface StartConversationPayload {
   agentId: string;
