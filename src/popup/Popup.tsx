@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Phone, Mic, Activity, CheckCircle, LogOut, Settings2 } from 'lucide-react'
+import { Mic, Activity, CheckCircle, LogOut, Settings2 } from 'lucide-react'
 import { useCallStore } from '@/stores/call-store'
 import { SessionStats } from '@/components/SessionStats'
 import Login from './Login'
@@ -282,10 +282,10 @@ export default function Popup() {
 
   if (isCheckingAuth) {
     return (
-      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+      <div className="w-80 p-6 bg-white">
         <div className="text-center py-8">
-          <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
-          <p className="text-sm text-gray-400 mt-4">Loading...</p>
+          <div className="animate-spin w-8 h-8 border-4 border-[#1B1F6B] border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-sm text-[#757575] mt-4">Loading...</p>
         </div>
       </div>
     )
@@ -297,10 +297,10 @@ export default function Popup() {
 
   if (isCheckingTab) {
     return (
-      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+      <div className="w-80 p-6 bg-white">
         <div className="text-center py-8">
-          <div className="animate-spin w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full mx-auto"></div>
-          <p className="text-sm text-gray-400 mt-4">Loading...</p>
+          <div className="animate-spin w-8 h-8 border-4 border-[#1B1F6B] border-t-transparent rounded-full mx-auto"></div>
+          <p className="text-sm text-[#757575] mt-4">Loading...</p>
         </div>
       </div>
     )
@@ -308,18 +308,16 @@ export default function Popup() {
 
   if (!isCallToolsTab) {
     return (
-      <div className="w-80 p-6 bg-gradient-to-br from-gray-900 to-gray-800">
+      <div className="w-80 p-6 bg-white">
         <div className="text-center py-8">
-          <div className="p-4 bg-purple-500/10 rounded-full w-20 h-20 mx-auto mb-4 flex items-center justify-center">
-            <Phone className="w-10 h-10 text-purple-400" />
-          </div>
-          <h3 className="text-lg font-semibold text-white mb-2">
+          <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-10 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-[#1B1F6B] mb-2">
             CallTools Only
           </h3>
-          <p className="text-sm text-gray-400 leading-relaxed mb-4">
+          <p className="text-sm text-[#757575] leading-relaxed mb-4">
             This extension only works on the CallTools.io platform.
           </p>
-          <div className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg mb-4">
+          <div className="p-3 bg-white border border-[#dddddd] rounded-lg mb-4">
             <p className="text-xs text-gray-500">
               💡 Navigate to CallTools agent dashboard to activate coaching
               features
@@ -328,7 +326,7 @@ export default function Popup() {
 
           <button
             onClick={handleLogout}
-            className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+            className="w-full py-2 px-4 bg-[#F5F7FA] hover:bg-white text-[#333333] text-sm font-medium rounded-lg transition-all duration-200 flex items-center justify-center gap-2 border border-[#dddddd]"
           >
             <LogOut className="w-4 h-4" />
             Logout
@@ -341,36 +339,34 @@ export default function Popup() {
   const isRecording = audioState === 'capturing' // ← Fixed: Check audioState, not callState
 
   return (
-    <div className="w-80 bg-gradient-to-br from-gray-900 to-gray-800 text-white">
+    <div className="w-80 bg-white text-[#333333]">
       <div className="p-6 pb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Phone className="w-6 h-6 text-purple-400" />
-            </div>
+            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-7" />
             <div>
-              <h1 className="text-lg font-bold">Simple.Biz Call Coach</h1>
-              <p className="text-xs text-gray-400">Real-time AI coaching</p>
+              <h1 className="text-lg font-bold text-[#1B1F6B]">Call Coach</h1>
+              <p className="text-xs text-[#757575]">Real-time AI coaching</p>
             </div>
           </div>
 
           <button
             onClick={handleLogout}
-            className="p-2 hover:bg-gray-700 rounded-lg transition-colors"
+            className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
             title="Logout"
           >
-            <LogOut className="w-4 h-4 text-gray-400" />
+            <LogOut className="w-4 h-4 text-[#757575]" />
           </button>
         </div>
 
         <div className="mt-2 text-xs text-gray-500 space-y-0.5">
           <div className="flex items-center justify-between">
-            <div>Logged in as: <span className="text-purple-400">{userEmail}</span></div>
+            <div>Logged in as: <span className="text-[#1B1F6B]">{userEmail}</span></div>
           </div>
           <div className="flex items-center justify-between mt-1">
             {userCcEmail ? (
               <div className="flex items-center gap-2">
-                <span>CC: <span className="text-gray-400">{userCcEmail}</span></span>
+                <span>CC: <span className="text-[#757575]">{userCcEmail}</span></span>
                 <button 
                   onClick={() => {
                     const newCc = prompt('Update CC Email:', userCcEmail);
@@ -378,7 +374,7 @@ export default function Popup() {
                       handleLogin(userEmail!, newCc);
                     }
                   }}
-                  className="text-xs text-blue-400 hover:text-blue-300 underline"
+                  className="text-xs text-[#F5841F] hover:text-[#F5841F]/80 underline"
                 >
                   Edit
                 </button>
@@ -391,7 +387,7 @@ export default function Popup() {
                     handleLogin(userEmail!, newCc);
                   }
                 }}
-                className="text-xs text-gray-500 hover:text-purple-400 flex items-center gap-1 transition-colors"
+                className="text-xs text-gray-500 hover:text-[#1B1F6B] flex items-center gap-1 transition-colors"
               >
                 + Add CC Email
               </button>
@@ -402,8 +398,8 @@ export default function Popup() {
 
       {!hasUsedBefore && !isRecording && (
         <div className="px-6 pb-4">
-          <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4 mb-4">
-            <h3 className="text-sm font-semibold text-blue-400 mb-2 flex items-center gap-2">
+          <div className="bg-[#F5841F]/10 border border-[#F5841F]/30 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-[#F5841F] mb-2 flex items-center gap-2">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
@@ -413,19 +409,19 @@ export default function Popup() {
               </svg>
               How to Use
             </h3>
-            <ol className="text-xs text-gray-300 space-y-2">
+            <ol className="text-xs text-[#757575] space-y-2">
               <li className="flex gap-2">
-                <span className="font-bold text-blue-400">1.</span>
+                <span className="font-bold text-[#F5841F]">1.</span>
                 <span>Start or answer a call in CallTools</span>
               </li>
               <li className="flex gap-2">
-                <span className="font-bold text-blue-400">2.</span>
+                <span className="font-bold text-[#F5841F]">2.</span>
                 <span>
                   Click the <strong>"Start AI Coaching"</strong> button below
                 </span>
               </li>
               <li className="flex gap-2">
-                <span className="font-bold text-blue-400">3.</span>
+                <span className="font-bold text-[#F5841F]">3.</span>
                 <span>
                   The side panel will open with live transcription and AI tips
                 </span>
@@ -436,7 +432,7 @@ export default function Popup() {
       )}
 
       <div className="px-6 pb-4">
-        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700">
+        <div className="p-4 bg-white rounded-lg border border-[#dddddd]">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium">Recording Status</span>
             <div className="flex items-center gap-2">
@@ -445,7 +441,7 @@ export default function Popup() {
                   isRecording ? 'bg-green-500 animate-pulse' : 'bg-gray-500'
                 }`}
               />
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-[#757575]">
                 {isRecording ? 'Recording' : 'Inactive'}
               </span>
             </div>
@@ -454,10 +450,10 @@ export default function Popup() {
           {isRecording && (
             <div className="mt-3">
               <div className="flex items-center gap-2 mb-1">
-                <Activity className="w-3 h-3 text-gray-400" />
-                <span className="text-xs text-gray-400">Audio Level</span>
+                <Activity className="w-3 h-3 text-[#757575]" />
+                <span className="text-xs text-[#757575]">Audio Level</span>
               </div>
-              <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-green-500 to-emerald-400 transition-all duration-100"
                   style={{ width: `${audioLevel}%` }}
@@ -475,7 +471,7 @@ export default function Popup() {
             disabled={isStarting}
             className={`w-full py-3 px-4 ${
               !isStarting
-                ? 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 shadow-lg hover:shadow-green-500/20'
+                ? 'bg-[#1B1F6B] hover:bg-[#14174f] shadow-lg hover:shadow-[#1B1F6B]/20'
                 : 'bg-gray-600 cursor-not-allowed opacity-50'
             } text-white font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed`}
           >
@@ -493,12 +489,12 @@ export default function Popup() {
       {isRecording && (
         <div className="px-6 pb-4">
           <div className="space-y-3">
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
-              <p className="text-sm text-green-400 font-medium flex items-center gap-2">
+            <div className="p-3 bg-[#1B1F6B]/10 border border-[#1B1F6B]/30 rounded-lg">
+              <p className="text-sm text-[#1B1F6B] font-medium flex items-center gap-2">
                 <CheckCircle className="w-4 h-4" />
                 Coaching Active
               </p>
-              <p className="text-xs text-gray-400 mt-1">
+              <p className="text-xs text-[#757575] mt-1">
                 AI is listening and providing real-time tips
               </p>
             </div>
@@ -524,14 +520,14 @@ export default function Popup() {
                   )
                 }
               }}
-              className="w-full py-2 px-4 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-200"
+              className="w-full py-2 px-4 bg-[#F5F7FA] hover:bg-white text-[#333333] text-sm font-medium rounded-lg transition-all duration-200 border border-[#dddddd]"
             >
               Open Coaching Panel
             </button>
 
             <button
               onClick={handleStopCoaching}
-              className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg transition-all duration-200"
+              className="w-full py-2 px-4 bg-[#D0021B] hover:bg-[#b0011a] text-white text-sm font-medium rounded-lg transition-all duration-200"
             >
               Stop Coaching
             </button>
@@ -540,13 +536,13 @@ export default function Popup() {
       )}
 
       {/* Developer Mode Toggle Footer */}
-      <div className="px-6 pb-6 pt-4 border-t border-gray-700/50">
+      <div className="px-6 pb-6 pt-4 border-t border-[#dddddd]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Settings2 className="w-4 h-4 text-gray-400" />
-            <span className="text-sm text-gray-300">Developer Mode</span>
+            <Settings2 className="w-4 h-4 text-[#757575]" />
+            <span className="text-sm text-[#333333]">Developer Mode</span>
             {developerModeEnabled && (
-              <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30 font-semibold">
+              <span className="text-xs px-2 py-0.5 bg-[#F5841F]/20 text-[#F5841F] rounded-full border border-[#F5841F]/30 font-semibold">
                 SANDBOX
               </span>
             )}
@@ -554,7 +550,7 @@ export default function Popup() {
           <button
             onClick={handleToggleDeveloperMode}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              developerModeEnabled ? 'bg-blue-600' : 'bg-gray-600'
+              developerModeEnabled ? 'bg-[#F5841F]' : 'bg-gray-300'
             }`}
             aria-label="Toggle Developer Mode"
           >
@@ -573,18 +569,18 @@ export default function Popup() {
             <div className="flex gap-2">
               <button
                 onClick={handleSimulateCallStart}
-                className="flex-1 px-3 py-2 bg-green-600/20 hover:bg-green-600/30 text-green-400 text-xs rounded border border-green-600/50 transition-colors"
+                className="flex-1 px-3 py-2 bg-[#1B1F6B]/20 hover:bg-[#1B1F6B]/30 text-[#1B1F6B] text-xs rounded border border-[#1B1F6B]/50 transition-colors"
               >
                 📞 Simulate Call Start
               </button>
               <button
                 onClick={handleSimulateCallEnd}
-                className="flex-1 px-3 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 text-xs rounded border border-red-600/50 transition-colors"
+                className="flex-1 px-3 py-2 bg-[#D0021B]/20 hover:bg-[#D0021B]/30 text-[#D0021B] text-xs rounded border border-[#D0021B]/50 transition-colors"
               >
                 🔴 Simulate Call End
               </button>
             </div>
-            <p className="text-xs text-gray-400 italic">
+            <p className="text-xs text-[#757575] italic">
               Click "Simulate Call Start" then "Start AI Coaching"
             </p>
           </div>

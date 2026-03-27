@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import { useCallStore } from "@/stores/call-store";
 import {
   Mic,
-  Phone,
   Trash2,
   Wifi,
   WifiOff,
@@ -32,6 +31,8 @@ export default function SidePanel() {
 
   // Sandbox mode: Customer input (text)
   const [customerMessage, setCustomerMessage] = useState('');
+  const [threadExpanded, setThreadExpanded] = useState(false);
+  const [threadVisible, setThreadVisible] = useState(false);
 
   // Sandbox mode: Agent PTT (Push-to-Talk)
   const [pttStatus, setPttStatus] = useState<PTTStatus>('idle');
@@ -667,17 +668,18 @@ export default function SidePanel() {
   }, [environment, handlePTTStart, handlePTTStop]);
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <div className="p-4 border-b bg-card">
+      <div className="px-4 py-3 border-b border-[#E0E4E8] bg-white">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold">Simple.biz Call Coach</h1>
+            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-9" />
+            <span className="text-sm font-semibold text-[#1B1F6B]">Call Coach</span>
             {/* Environment Badge */}
-            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
               environment === 'production'
-                ? 'bg-green-100 text-green-700 border-green-300'
-                : 'bg-blue-100 text-blue-700 border-blue-300'
+                ? 'bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30'
+                : 'bg-[#F5841F]/10 text-[#F5841F] border-[#F5841F]/30'
             }`}>
               {environment === 'production' ? 'PROD' : 'DEV'}
             </span>
@@ -714,14 +716,14 @@ export default function SidePanel() {
               <>
                 <button
                   onClick={exportTranscriptsAsText}
-                  className="px-2 py-1 text-xs bg-blue-500 hover:bg-blue-600 text-white rounded transition-colors"
+                  className="px-2 py-1 text-xs bg-[#F5841F] hover:bg-[#e0740f] text-white rounded transition-colors"
                   title="Export as Text"
                 >
                   TXT
                 </button>
                 <button
                   onClick={exportTranscriptsAsJSON}
-                  className="px-2 py-1 text-xs bg-purple-500 hover:bg-purple-600 text-white rounded transition-colors"
+                  className="px-2 py-1 text-xs bg-[#1B1F6B] hover:bg-[#14174f] text-white rounded transition-colors"
                   title="Export as JSON"
                 >
                   JSON
@@ -737,11 +739,11 @@ export default function SidePanel() {
         /* ========== SANDBOX MODE VIEW ========== */
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Sandbox Header */}
-          <div className="px-4 py-3 bg-gradient-to-r from-blue-900/30 to-purple-900/30 border-b border-white/10 flex items-center justify-between">
+          <div className="px-4 py-3 bg-[#F5F7FA] border-b border-[#dddddd] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Mic size={16} className="text-blue-400" />
-              <span className="text-sm font-bold text-white">Sandbox Mode</span>
-              <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded-full border border-blue-500/30 font-semibold">
+              <Mic size={16} className="text-[#F5841F]" />
+              <span className="text-sm font-bold text-[#333333]">Sandbox Mode</span>
+              <span className="text-xs px-2 py-0.5 bg-[#F5841F]/20 text-[#F5841F] rounded-full border border-[#F5841F]/30 font-semibold">
                 TESTING
               </span>
             </div>
@@ -749,10 +751,10 @@ export default function SidePanel() {
           </div>
 
           {/* Customer Input (Type) */}
-          <div className="p-4 bg-blue-900/10 border-b border-white/10">
+          <div className="p-4 bg-[#F5841F]/10 border-b border-[#dddddd]">
             <div className="flex items-center gap-2 mb-2">
-              <Send size={14} className="text-blue-400" />
-              <span className="text-xs font-semibold text-blue-300 uppercase tracking-wide">Customer Response (Type)</span>
+              <Send size={14} className="text-[#F5841F]" />
+              <span className="text-xs font-semibold text-[#F5841F] uppercase tracking-wide">Customer Response (Type)</span>
             </div>
             <div className="relative mb-2">
               <textarea
@@ -765,14 +767,14 @@ export default function SidePanel() {
                   }
                 }}
                 placeholder="Type what the customer says... (Enter to send, Shift+Enter for new line)"
-                className="w-full px-3 py-2 text-sm bg-gray-800/50 border border-blue-500/20 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                className="w-full px-3 py-2 text-sm bg-[#F5F7FA] border border-[#F5841F]/20 rounded-lg text-[#333333] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F5841F] focus:border-transparent resize-none"
                 rows={2}
               />
             </div>
             <button
               onClick={handleSendCustomerMessage}
               disabled={!customerMessage.trim()}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-[#F5841F] hover:bg-[#e0740f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
             >
               <Send size={14} />
               Send Customer Message
@@ -780,10 +782,10 @@ export default function SidePanel() {
           </div>
 
           {/* Agent Input (Push-to-Talk) */}
-          <div className="p-4 bg-purple-900/10 border-b border-white/10">
+          <div className="p-4 bg-[#1B1F6B]/10 border-b border-[#dddddd]">
             <div className="flex items-center gap-2 mb-2">
-              <Mic size={14} className="text-purple-400" />
-              <span className="text-xs font-semibold text-purple-300 uppercase tracking-wide">Your Response (Speak)</span>
+              <Mic size={14} className="text-[#1B1F6B]" />
+              <span className="text-xs font-semibold text-[#1B1F6B] uppercase tracking-wide">Your Response (Speak)</span>
             </div>
 
             {/* PTT Button */}
@@ -796,10 +798,10 @@ export default function SidePanel() {
                 onTouchEnd={handlePTTStop}
                 className={`w-full py-12 rounded-lg transition-all font-bold text-lg flex flex-col items-center justify-center gap-2 border-2 ${
                   isPttButtonHeld
-                    ? 'bg-red-600 border-red-400 text-white shadow-lg shadow-red-500/50 animate-pulse'
+                    ? 'bg-[#D0021B] border-[#D0021B] text-white shadow-lg shadow-[#D0021B]/50 animate-pulse'
                     : pttStatus === 'error'
                       ? 'bg-gray-700 border-red-500/50 text-red-400'
-                      : 'bg-purple-600 border-purple-400 text-white hover:bg-purple-700 active:scale-95'
+                      : 'bg-[#1B1F6B] border-[#1B1F6B] text-white hover:bg-[#14174f] active:scale-95'
                 }`}
               >
                 {isPttButtonHeld ? (
@@ -822,22 +824,22 @@ export default function SidePanel() {
 
             {/* Live Transcription Preview */}
             {isPttButtonHeld && (
-              <div className="mt-3 p-3 bg-black/30 rounded-lg border border-purple-500/30">
+              <div className="mt-3 p-3 bg-[#F5F7FA] rounded-lg border border-[#1B1F6B]/30">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="flex gap-1">
-                    <div className="w-1 h-4 bg-purple-500 animate-pulse"></div>
-                    <div className="w-1 h-4 bg-purple-500 animate-pulse" style={{ animationDelay: '0.1s' }}></div>
-                    <div className="w-1 h-4 bg-purple-500 animate-pulse" style={{ animationDelay: '0.2s' }}></div>
+                    <div className="w-1 h-4 bg-[#1B1F6B] animate-pulse"></div>
+                    <div className="w-1 h-4 bg-[#1B1F6B] animate-pulse" style={{ animationDelay: '0.1s' }}></div>
+                    <div className="w-1 h-4 bg-[#1B1F6B] animate-pulse" style={{ animationDelay: '0.2s' }}></div>
                   </div>
-                  <span className="text-xs text-purple-300 font-semibold">Listening...</span>
+                  <span className="text-xs text-[#1B1F6B] font-semibold">Listening...</span>
                 </div>
-                <p className="text-sm text-white italic min-h-[20px]">
+                <p className="text-sm text-[#333333] italic min-h-[20px]">
                   {pttTranscript || 'Speak now...'}
                 </p>
                 {/* Audio Level */}
-                <div className="mt-2 w-full bg-gray-800 rounded-full h-2">
+                <div className="mt-2 w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className="bg-purple-500 h-2 rounded-full transition-all duration-100"
+                    className="bg-[#1B1F6B] h-2 rounded-full transition-all duration-100"
                     style={{ width: `${pttAudioLevel}%` }}
                   />
                 </div>
@@ -854,11 +856,11 @@ export default function SidePanel() {
           {transcriptions.length === 0 ? (
             <div className="text-center py-12 px-4">
               <div className="flex items-center justify-center gap-3 mb-4">
-                <Send size={32} className="text-blue-400" />
-                <Mic size={32} className="text-purple-400" />
+                <Send size={32} className="text-[#F5841F]" />
+                <Mic size={32} className="text-[#1B1F6B]" />
               </div>
-              <h3 className="text-lg font-semibold mb-2 text-white">Hybrid Testing Mode</h3>
-              <p className="text-sm text-gray-400 mb-4">
+              <h3 className="text-lg font-semibold mb-2 text-[#333333]">Hybrid Testing Mode</h3>
+              <p className="text-sm text-[#757575] mb-4">
                 Type customer responses, speak your agent responses
               </p>
               <div className="text-xs text-gray-500 space-y-1">
@@ -869,18 +871,19 @@ export default function SidePanel() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-y-auto">
-              {/* Conversation Intelligence Display */}
-              <div className="px-4 pt-4">
-                <IntelligenceDisplay
-                  intelligence={intelligence}
-                  entities={entities}
-                  isRecording={callState === "active"}
-                />
-              </div>
+            <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              {/* Conversation Intelligence Display - hidden when expanded */}
+              {!threadExpanded && (
+                <div className={`px-3 pt-2 pb-1 overflow-y-auto ${threadVisible ? 'max-h-[35%] shrink-0' : 'flex-1'}`}>
+                  <IntelligenceDisplay
+                    intelligence={intelligence}
+                    entities={entities}
+                    isRecording={callState === "active"}
+                  />
+                </div>
+              )}
 
-
-              {/* Chat Thread with Manual Transcripts */}
+              {/* Chat Thread */}
               <ChatThread
                 transcriptions={transcriptions}
                 callState={callState}
@@ -888,6 +891,10 @@ export default function SidePanel() {
                 onSelectScript={handleSelectScript}
                 onExportText={exportTranscriptsAsText}
                 onExportJSON={exportTranscriptsAsJSON}
+                expanded={threadExpanded}
+                collapsed={!threadVisible && !threadExpanded}
+                onToggleExpand={() => { setThreadExpanded(!threadExpanded); setThreadVisible(true); }}
+                onToggleCollapse={() => { setThreadVisible(!threadVisible); setThreadExpanded(false); }}
               />
             </div>
           )}
@@ -914,50 +921,38 @@ export default function SidePanel() {
             </div>
           )}
 
-          {/* Production Conversation Thread */}
-          {transcriptions.length === 0 ? (
-            <div className="text-center py-12">
-              <Phone size={48} className="mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No Active Call</h3>
-              <p className="text-sm text-muted-foreground mb-4">
-                Start a call in CallTools to begin AI coaching
-              </p>
-              <div className="text-xs text-gray-400">
-                <p>Extension will automatically detect when you're on a call</p>
-                <p>Click "Start AI Coaching" in the popup to begin</p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-y-auto">
-              {/* Conversation Intelligence Display */}
-              <div className="px-4 pt-4">
+          {/* Production Conversation Thread - always visible */}
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            {/* Conversation Intelligence Display - hidden when thread expanded */}
+            {!threadExpanded && (
+              <div className={`px-3 pt-2 pb-1 overflow-y-auto ${threadVisible ? 'max-h-[35%] shrink-0' : 'flex-1'}`}>
                 <IntelligenceDisplay
                   intelligence={intelligence}
                   entities={entities}
                   isRecording={callState === "active"}
                 />
               </div>
+            )}
 
-
-              {/* Chat Thread with Live Transcripts */}
-              <ChatThread
-                transcriptions={transcriptions}
-                callState={callState}
-                isLoadingScripts={isLoadingScripts}
-                onSelectScript={handleSelectScript}
-                onExportText={exportTranscriptsAsText}
-                onExportJSON={exportTranscriptsAsJSON}
-              />
-            </div>
-          )}
+            {/* Chat Thread */}
+            <ChatThread
+              transcriptions={transcriptions}
+              callState={callState}
+              isLoadingScripts={isLoadingScripts}
+              onSelectScript={handleSelectScript}
+              onExportText={exportTranscriptsAsText}
+              onExportJSON={exportTranscriptsAsJSON}
+              expanded={threadExpanded}
+              collapsed={!threadVisible && !threadExpanded}
+              onToggleExpand={() => { setThreadExpanded(!threadExpanded); setThreadVisible(true); }}
+              onToggleCollapse={() => { setThreadVisible(!threadVisible); setThreadExpanded(false); }}
+            />
+          </div>
         </div>
       )}
 
-      {/* Developer Mode Info (optional, can be removed if not needed) */}
-      {/* DeveloperMode component not needed as functionality is now in dual-view */}
-
       {/* Footer Stats */}
-      {(transcriptions.length > 0 || callState === "active") && (
+      {!threadExpanded && (transcriptions.length > 0 || callState === "active") && (
         <SessionStats
           transcriptions={transcriptions}
           coachingTips={coachingTips}

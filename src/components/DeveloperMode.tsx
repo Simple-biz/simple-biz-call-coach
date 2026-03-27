@@ -81,23 +81,23 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
   ];
 
   return (
-    <div className="border-t border-white/10 bg-gradient-to-br from-blue-900/20 to-purple-900/20 p-4">
+    <div className="border-t border-[#dddddd] bg-[#F5F7FA] p-4">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-blue-400" />
-          <h3 className="text-sm font-bold text-white">Developer Mode</h3>
+          <Settings2 className="w-4 h-4 text-[#F5841F]" />
+          <h3 className="text-sm font-bold text-[#333333]">Developer Mode</h3>
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
             environment === 'sandbox'
-              ? 'bg-blue-100 text-blue-700 border-blue-300'
-              : 'bg-green-100 text-green-700 border-green-300'
+              ? 'bg-[#F5841F]/20 text-[#F5841F] border-[#F5841F]/30'
+              : 'bg-[#1B1F6B]/20 text-[#1B1F6B] border-[#1B1F6B]/30'
           }`}>
             {environment.toUpperCase()}
           </span>
         </div>
         <button
           onClick={handleToggleEnvironment}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-[#F5841F] hover:bg-[#e0740f] text-white rounded transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
           Switch to {environment === 'production' ? 'Sandbox' : 'Production'}
@@ -105,17 +105,17 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
       </div>
 
       {/* Environment Info */}
-      <div className="mb-4 p-3 bg-black/20 rounded-lg border border-white/5">
-        <div className="text-xs text-gray-400 space-y-1">
+      <div className="mb-4 p-3 bg-[#F5F7FA] rounded-lg border border-[#dddddd]">
+        <div className="text-xs text-[#757575] space-y-1">
           <div className="flex justify-between">
             <span>WebSocket:</span>
-            <span className="font-mono text-gray-300">
+            <span className="font-mono text-[#333333]">
               {environment === 'sandbox' ? 'ws://localhost:8080' : useCallStore.getState().websocketUrl}
             </span>
           </div>
           <div className="flex justify-between">
             <span>Mode:</span>
-            <span className="text-gray-300">
+            <span className="text-[#333333]">
               {environment === 'sandbox' ? 'Mock Data (Offline)' : 'Live AWS Lambda'}
             </span>
           </div>
@@ -124,14 +124,14 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
 
       {/* Scenario Selector */}
       <div className="mb-4">
-        <label className="block text-xs font-semibold text-gray-300 mb-2">
+        <label className="block text-xs font-semibold text-[#333333] mb-2">
           Load Test Scenario
         </label>
         <div className="flex gap-2">
           <select
             value={selectedScenario}
             onChange={(e) => setSelectedScenario(e.target.value)}
-            className="flex-1 px-3 py-2 text-sm bg-gray-800 border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 text-sm bg-white border border-[#dddddd] rounded-lg text-[#333333] focus:outline-none focus:ring-2 focus:ring-[#1B1F6B]"
           >
             <option value="">Select a scenario...</option>
             {mockScenarios.map(scenario => (
@@ -143,7 +143,7 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
           <button
             onClick={handleLoadScenario}
             disabled={!selectedScenario}
-            className="flex items-center gap-1 px-3 py-2 text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
+            className="flex items-center gap-1 px-3 py-2 text-xs bg-[#1B1F6B] hover:bg-[#14174f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors"
           >
             <Play className="w-3 h-3" />
             Load
@@ -163,8 +163,8 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
             onClick={() => setSpeaker('customer')}
             className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-all ${
               speaker === 'customer'
-                ? 'bg-blue-600 text-white border-2 border-blue-400'
-                : 'bg-gray-800 text-gray-400 border-2 border-white/10 hover:border-blue-400/50'
+                ? 'bg-[#F5841F] text-white border-2 border-[#F5841F]'
+                : 'bg-[#F5F7FA] text-[#757575] border-2 border-[#dddddd] hover:border-[#F5841F]/50'
             }`}
           >
             Customer
@@ -173,8 +173,8 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
             onClick={() => setSpeaker('agent')}
             className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-all ${
               speaker === 'agent'
-                ? 'bg-purple-600 text-white border-2 border-purple-400'
-                : 'bg-gray-800 text-gray-400 border-2 border-white/10 hover:border-purple-400/50'
+                ? 'bg-[#1B1F6B] text-white border-2 border-[#1B1F6B]'
+                : 'bg-[#F5F7FA] text-[#757575] border-2 border-[#dddddd] hover:border-[#1B1F6B]/50'
             }`}
           >
             Agent (You)
@@ -193,26 +193,26 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
               }
             }}
             placeholder={`Type a ${speaker} message... (Press Enter to send, Shift+Enter for new line)`}
-            className="w-full px-3 py-2 text-sm bg-gray-800 border border-white/10 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            className="w-full px-3 py-2 text-sm bg-white border border-[#dddddd] rounded-lg text-[#333333] placeholder-[#757575] focus:outline-none focus:ring-2 focus:ring-[#1B1F6B] resize-none"
             rows={3}
           />
         </div>
 
         {/* Send Button & Auto-Response Toggle */}
         <div className="flex items-center justify-between gap-2">
-          <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer">
+          <label className="flex items-center gap-2 text-xs text-[#757575] cursor-pointer">
             <input
               type="checkbox"
               checked={autoResponse}
               onChange={(e) => setAutoResponse(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-600 bg-gray-800 text-blue-600 focus:ring-2 focus:ring-blue-500"
+              className="w-4 h-4 rounded border-[#dddddd] bg-white text-[#F5841F] focus:ring-2 focus:ring-[#1B1F6B]"
             />
             <span>Auto AI Response (for customer messages)</span>
           </label>
           <button
             onClick={handleSendMessage}
             disabled={!messageText.trim()}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-[#F5841F] hover:bg-[#e0740f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
           >
             <Send className="w-4 h-4" />
             Send as {speaker === 'agent' ? 'Agent' : 'Customer'}
@@ -221,12 +221,12 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
       </div>
 
       {/* Info Note */}
-      <div className="mt-4 p-3 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+      <div className="mt-4 p-3 bg-[#F5841F]/10 border border-[#F5841F]/30 rounded-lg">
         <div className="flex items-start gap-2">
-          <Database className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />
-          <div className="text-xs text-blue-300">
+          <Database className="w-4 h-4 text-[#F5841F] mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-[#F5841F]">
             <p className="font-semibold mb-1">Sandbox Mode Features:</p>
-            <ul className="list-disc list-inside space-y-0.5 text-blue-200">
+            <ul className="list-disc list-inside space-y-0.5 text-[#F5841F]/80">
               <li>No internet required - fully offline</li>
               <li>Mock WebSocket server at localhost:8080</li>
               <li>Uses Mark's 28 Golden Scripts locally</li>

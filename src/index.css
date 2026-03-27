@@ -1,50 +1,54 @@
 @import "tailwindcss";
 
+/* CallTools-aligned color scheme */
 @theme {
   --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
-  --color-primary: #3b82f6;
+  --color-foreground: #333333;
+  --color-primary: #1B1F6B;
   --color-primary-foreground: #ffffff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0a0a0a;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
-  --color-accent: #f1f5f9;
-  --color-accent-foreground: #0a0a0a;
-  --color-destructive: #ef4444;
+  --color-secondary: #EFF3F6;
+  --color-secondary-foreground: #333333;
+  --color-muted: #EFF3F6;
+  --color-muted-foreground: #757575;
+  --color-accent: #F5841F;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #D0021B;
   --color-destructive-foreground: #ffffff;
-  --color-border: #e2e8f0;
-  --color-input: #e2e8f0;
-  --color-ring: #3b82f6;
+  --color-border: #dddddd;
+  --color-input: #dddddd;
+  --color-ring: #1B1F6B;
   --color-card: #ffffff;
-  --color-card-foreground: #0a0a0a;
+  --color-card-foreground: #333333;
+  --color-warning: #FFAF00;
   --radius: 0.5rem;
 }
 
+/* Force light theme even when system prefers dark */
 @media (prefers-color-scheme: dark) {
   @theme {
-    --color-background: #0a0a0a;
-    --color-foreground: #fafafa;
-    --color-primary: #60a5fa;
-    --color-primary-foreground: #1e293b;
-    --color-secondary: #1e293b;
-    --color-secondary-foreground: #fafafa;
-    --color-muted: #1e293b;
-    --color-muted-foreground: #94a3b8;
-    --color-accent: #1e293b;
-    --color-accent-foreground: #fafafa;
-    --color-destructive: #7f1d1d;
-    --color-destructive-foreground: #fafafa;
-    --color-border: #1e293b;
-    --color-input: #1e293b;
-    --color-ring: #3b82f6;
-    --color-card: #0a0a0a;
-    --color-card-foreground: #fafafa;
+    --color-background: #ffffff;
+    --color-foreground: #333333;
+    --color-primary: #1B1F6B;
+    --color-primary-foreground: #ffffff;
+    --color-secondary: #EFF3F6;
+    --color-secondary-foreground: #333333;
+    --color-muted: #EFF3F6;
+    --color-muted-foreground: #757575;
+    --color-accent: #F5841F;
+    --color-accent-foreground: #ffffff;
+    --color-destructive: #D0021B;
+    --color-destructive-foreground: #ffffff;
+    --color-border: #dddddd;
+    --color-input: #dddddd;
+    --color-ring: #1B1F6B;
+    --color-card: #ffffff;
+    --color-card-foreground: #333333;
+    --color-warning: #FFAF00;
   }
 }
 
 body {
   background-color: var(--color-background);
   color: var(--color-foreground);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
