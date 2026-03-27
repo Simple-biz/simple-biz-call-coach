@@ -76,10 +76,10 @@ export function SessionStats({ transcriptions, session, callState, compact }: Se
     return (
       <div className="grid grid-cols-2 gap-2">
         {stats.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="flex items-center gap-2 px-2 py-1.5 bg-gray-800/50 rounded-md border border-gray-700/50">
-            <Icon className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-            <span className="text-xs text-gray-400">{label}</span>
-            <span className="text-xs font-medium text-white ml-auto">{value}</span>
+          <div key={label} className="flex items-center gap-2 px-2 py-1.5 bg-[#F5F7FA] rounded-md border border-[#dddddd]">
+            <Icon className="w-3.5 h-3.5 text-[#757575] shrink-0" />
+            <span className="text-xs text-[#757575]">{label}</span>
+            <span className="text-xs font-medium text-[#333333] ml-auto">{value}</span>
           </div>
         ))}
       </div>
@@ -87,13 +87,13 @@ export function SessionStats({ transcriptions, session, callState, compact }: Se
   }
 
   return (
-    <div className="border-t bg-card p-3">
-      <div className="grid grid-cols-3 gap-2">
+    <div className="border-t bg-card px-3 py-2">
+      <div className="flex gap-3">
         {stats.map(({ icon: Icon, label, value }) => (
-          <div key={label} className="flex flex-col items-center gap-1 px-2 py-2 bg-gray-800/50 rounded-lg border border-gray-700/50">
-            <Icon className="w-4 h-4 text-gray-400" />
-            <span className="text-sm font-medium text-white">{value}</span>
-            <span className="text-[10px] text-gray-500">{label}</span>
+          <div key={label} className="flex items-center gap-1.5 px-2 py-1 bg-[#F5F7FA] rounded-md border border-[#dddddd] flex-1">
+            <Icon className="w-3.5 h-3.5 text-[#757575] shrink-0" />
+            <span className="text-[10px] text-[#757575]">{label}</span>
+            <span className="text-xs font-semibold text-[#333333] ml-auto">{value}</span>
           </div>
         ))}
       </div>
