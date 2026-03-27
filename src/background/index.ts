@@ -466,6 +466,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Wrap in error boundary
   processMessage(message, sender)
     .then(result => {
+      // Skip response for messages handled by offscreen
+      if (result === '__SKIP_RESPONSE__') return
       sendResponse({ success: true, result })
     })
     .catch(error => {
@@ -894,6 +896,12 @@ async function processMessage(message: any, sender: any) {
       } catch (error: any) {
         throw new Error(error.message)
       }
+
+    case 'START_PTT_CAPTURE':
+    case 'STOP_PTT_CAPTURE':
+      // Handled by offscreen document listener — don't respond from background
+      console.log(`🎤 [Background] ${message.type} — handled by offscreen`)
+      return '__SKIP_RESPONSE__'
 
     // ========================================================================
     // OFFSCREEN PTT & LOGGING EVENTS

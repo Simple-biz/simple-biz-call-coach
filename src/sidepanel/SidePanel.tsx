@@ -673,13 +673,13 @@ export default function SidePanel() {
       <div className="px-4 py-3 border-b border-[#E0E4E8] bg-white">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-9" />
+            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-11" />
             <span className="text-sm font-semibold text-[#1B1F6B]">Call Coach</span>
             {/* Environment Badge */}
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
               environment === 'production'
                 ? 'bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30'
-                : 'bg-[#F5841F]/10 text-[#F5841F] border-[#F5841F]/30'
+                : 'bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30'
             }`}>
               {environment === 'production' ? 'PROD' : 'DEV'}
             </span>
@@ -716,7 +716,7 @@ export default function SidePanel() {
               <>
                 <button
                   onClick={exportTranscriptsAsText}
-                  className="px-2 py-1 text-xs bg-[#F5841F] hover:bg-[#e0740f] text-white rounded transition-colors"
+                  className="px-2 py-1 text-xs bg-[#1B1F6B] hover:bg-[#14174f] text-white rounded transition-colors"
                   title="Export as Text"
                 >
                   TXT
@@ -737,13 +737,13 @@ export default function SidePanel() {
       {/* DUAL-VIEW MAIN CONTENT */}
       {environment === 'sandbox' ? (
         /* ========== SANDBOX MODE VIEW ========== */
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-y-auto flex flex-col">
           {/* Sandbox Header */}
           <div className="px-4 py-3 bg-[#F5F7FA] border-b border-[#dddddd] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Mic size={16} className="text-[#F5841F]" />
+              <Mic size={16} className="text-[#1B1F6B]" />
               <span className="text-sm font-bold text-[#333333]">Sandbox Mode</span>
-              <span className="text-xs px-2 py-0.5 bg-[#F5841F]/20 text-[#F5841F] rounded-full border border-[#F5841F]/30 font-semibold">
+              <span className="text-xs px-2 py-0.5 bg-[#1B1F6B]/20 text-[#1B1F6B] rounded-full border border-[#1B1F6B]/30 font-semibold">
                 TESTING
               </span>
             </div>
@@ -751,10 +751,10 @@ export default function SidePanel() {
           </div>
 
           {/* Customer Input (Type) */}
-          <div className="p-4 bg-[#F5841F]/10 border-b border-[#dddddd]">
+          <div className="p-4 bg-[#1B1F6B]/10 border-b border-[#dddddd]">
             <div className="flex items-center gap-2 mb-2">
-              <Send size={14} className="text-[#F5841F]" />
-              <span className="text-xs font-semibold text-[#F5841F] uppercase tracking-wide">Customer Response (Type)</span>
+              <Send size={14} className="text-[#1B1F6B]" />
+              <span className="text-xs font-semibold text-[#1B1F6B] uppercase tracking-wide">Customer Response (Type)</span>
             </div>
             <div className="relative mb-2">
               <textarea
@@ -767,14 +767,14 @@ export default function SidePanel() {
                   }
                 }}
                 placeholder="Type what the customer says... (Enter to send, Shift+Enter for new line)"
-                className="w-full px-3 py-2 text-sm bg-[#F5F7FA] border border-[#F5841F]/20 rounded-lg text-[#333333] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#F5841F] focus:border-transparent resize-none"
+                className="w-full px-3 py-2 text-sm bg-[#F5F7FA] border border-[#1B1F6B]/20 rounded-lg text-[#333333] placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#1B1F6B] focus:border-transparent resize-none"
                 rows={2}
               />
             </div>
             <button
               onClick={handleSendCustomerMessage}
               disabled={!customerMessage.trim()}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-[#F5841F] hover:bg-[#e0740f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm bg-[#1B1F6B] hover:bg-[#14174f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
             >
               <Send size={14} />
               Send Customer Message
@@ -856,7 +856,7 @@ export default function SidePanel() {
           {transcriptions.length === 0 ? (
             <div className="text-center py-12 px-4">
               <div className="flex items-center justify-center gap-3 mb-4">
-                <Send size={32} className="text-[#F5841F]" />
+                <Send size={32} className="text-[#1B1F6B]" />
                 <Mic size={32} className="text-[#1B1F6B]" />
               </div>
               <h3 className="text-lg font-semibold mb-2 text-[#333333]">Hybrid Testing Mode</h3>

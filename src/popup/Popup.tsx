@@ -15,6 +15,104 @@ export default function Popup() {
   const [userCcEmail, setUserCcEmail] = useState<string | null>(null) // Added
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
   const [developerModeEnabled, setDeveloperModeEnabled] = useState(false)
+  const [micTesting, setMicTesting] = useState(false)
+  const [micLevel, setMicLevel] = useState(0)
+  const [micTranscript, setMicTranscript] = useState('')
+  const [micStream, setMicStream] = useState<MediaStream | null>(null)
+  const [micError, setMicError] = useState<string | null>(null)
+
+  // Mic test cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (micStream) {
+        micStream.getTracks().forEach(t => t.stop())
+      }
+    }
+  }, [micStream])
+
+  const startMicTest = async () => {
+    setMicError(null)
+    setMicTranscript('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      setMicStream(stream)
+      setMicTesting(true)
+
+      // Audio level meter
+      const audioCtx = new AudioContext()
+      const source = audioCtx.createMediaStreamSource(stream)
+      const analyser = audioCtx.createAnalyser()
+      analyser.fftSize = 256
+      source.connect(analyser)
+      const dataArray = new Uint8Array(analyser.frequencyBinCount)
+
+      const checkLevel = () => {
+        if (!stream.active) return
+        analyser.getByteFrequencyData(dataArray)
+        const avg = dataArray.reduce((a, b) => a + b, 0) / dataArray.length
+        setMicLevel(Math.min(100, Math.round((avg / 128) * 100)))
+        requestAnimationFrame(checkLevel)
+      }
+      checkLevel()
+
+      // Deepgram transcription test
+      const dgKey = await new Promise<string>((resolve) => {
+        chrome.storage.local.get(['deepgramApiKey'], (r: any) => resolve(r.deepgramApiKey || ''))
+      })
+
+      if (dgKey) {
+        const ws = new WebSocket(
+          `wss://api.deepgram.com/v1/listen?model=nova-2&encoding=linear16&sample_rate=48000&channels=1&interim_results=true&smart_format=true`,
+          ['token', dgKey]
+        )
+
+        const processor = audioCtx.createScriptProcessor(4096, 1, 1)
+        source.connect(processor)
+        processor.connect(audioCtx.destination)
+
+        processor.onaudioprocess = (e) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            const float32 = e.inputBuffer.getChannelData(0)
+            const int16 = new Int16Array(float32.length)
+            for (let i = 0; i < float32.length; i++) {
+              int16[i] = Math.max(-32768, Math.min(32767, Math.round(float32[i] * 32767)))
+            }
+            ws.send(int16.buffer)
+          }
+        }
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data)
+          const transcript = data.channel?.alternatives?.[0]?.transcript
+          if (transcript) {
+            setMicTranscript(transcript)
+          }
+        }
+
+        ws.onerror = () => setMicError('Deepgram connection failed')
+
+        // Store cleanup refs
+        stream.addEventListener('inactive', () => {
+          ws.close()
+          processor.disconnect()
+          audioCtx.close()
+        })
+      }
+    } catch (err: any) {
+      setMicError(err.message || 'Mic access denied')
+      setMicTesting(false)
+    }
+  }
+
+  const stopMicTest = () => {
+    if (micStream) {
+      micStream.getTracks().forEach(t => t.stop())
+      setMicStream(null)
+    }
+    setMicTesting(false)
+    setMicLevel(0)
+    setMicTranscript('')
+  }
 
   useEffect(() => {
     chrome.storage.local.get(['userEmail', 'userCcEmail', 'developerModeEnabled'], (result: { userEmail?: string; userCcEmail?: string; developerModeEnabled?: boolean }) => {
@@ -339,7 +437,7 @@ export default function Popup() {
   const isRecording = audioState === 'capturing' // ← Fixed: Check audioState, not callState
 
   return (
-    <div className="w-80 bg-white text-[#333333]">
+    <div className="w-80 max-h-[600px] overflow-y-auto bg-white text-[#333333]">
       <div className="p-6 pb-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">
@@ -374,7 +472,7 @@ export default function Popup() {
                       handleLogin(userEmail!, newCc);
                     }
                   }}
-                  className="text-xs text-[#F5841F] hover:text-[#F5841F]/80 underline"
+                  className="text-xs text-[#1B1F6B] hover:text-[#1B1F6B]/80 underline"
                 >
                   Edit
                 </button>
@@ -398,8 +496,8 @@ export default function Popup() {
 
       {!hasUsedBefore && !isRecording && (
         <div className="px-6 pb-4">
-          <div className="bg-[#F5841F]/10 border border-[#F5841F]/30 rounded-lg p-4 mb-4">
-            <h3 className="text-sm font-semibold text-[#F5841F] mb-2 flex items-center gap-2">
+          <div className="bg-[#1B1F6B]/10 border border-[#1B1F6B]/30 rounded-lg p-4 mb-4">
+            <h3 className="text-sm font-semibold text-[#1B1F6B] mb-2 flex items-center gap-2">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
@@ -411,17 +509,17 @@ export default function Popup() {
             </h3>
             <ol className="text-xs text-[#757575] space-y-2">
               <li className="flex gap-2">
-                <span className="font-bold text-[#F5841F]">1.</span>
+                <span className="font-bold text-[#1B1F6B]">1.</span>
                 <span>Start or answer a call in CallTools</span>
               </li>
               <li className="flex gap-2">
-                <span className="font-bold text-[#F5841F]">2.</span>
+                <span className="font-bold text-[#1B1F6B]">2.</span>
                 <span>
                   Click the <strong>"Start AI Coaching"</strong> button below
                 </span>
               </li>
               <li className="flex gap-2">
-                <span className="font-bold text-[#F5841F]">3.</span>
+                <span className="font-bold text-[#1B1F6B]">3.</span>
                 <span>
                   The side panel will open with live transcription and AI tips
                 </span>
@@ -542,7 +640,7 @@ export default function Popup() {
             <Settings2 className="w-4 h-4 text-[#757575]" />
             <span className="text-sm text-[#333333]">Developer Mode</span>
             {developerModeEnabled && (
-              <span className="text-xs px-2 py-0.5 bg-[#F5841F]/20 text-[#F5841F] rounded-full border border-[#F5841F]/30 font-semibold">
+              <span className="text-xs px-2 py-0.5 bg-[#1B1F6B]/20 text-[#1B1F6B] rounded-full border border-[#1B1F6B]/30 font-semibold">
                 SANDBOX
               </span>
             )}
@@ -550,7 +648,7 @@ export default function Popup() {
           <button
             onClick={handleToggleDeveloperMode}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              developerModeEnabled ? 'bg-[#F5841F]' : 'bg-gray-300'
+              developerModeEnabled ? 'bg-[#1B1F6B]' : 'bg-gray-300'
             }`}
             aria-label="Toggle Developer Mode"
           >
@@ -583,8 +681,69 @@ export default function Popup() {
             <p className="text-xs text-[#757575] italic">
               Click "Simulate Call Start" then "Start AI Coaching"
             </p>
+
+            {/* Mic Test */}
+            <div className="mt-3 p-3 bg-[#F5F7FA] rounded-lg border border-[#dddddd]">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Mic className="w-3.5 h-3.5 text-[#1B1F6B]" />
+                  <span className="text-xs font-semibold text-[#333333]">Mic Test</span>
+                </div>
+                <button
+                  onClick={micTesting ? stopMicTest : startMicTest}
+                  className={`px-3 py-1 text-xs font-semibold rounded transition-colors ${
+                    micTesting
+                      ? 'bg-[#D0021B] hover:bg-[#b0011a] text-white'
+                      : 'bg-[#1B1F6B] hover:bg-[#14174f] text-white'
+                  }`}
+                >
+                  {micTesting ? 'Stop' : 'Start'}
+                </button>
+              </div>
+
+              {micTesting && (
+                <>
+                  {/* Audio Level */}
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[10px] text-[#757575]">Audio Level</span>
+                      <span className="text-[10px] font-medium text-[#333333]">{micLevel}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all duration-100 ${
+                          micLevel > 50 ? 'bg-green-500' : micLevel > 10 ? 'bg-[#1B1F6B]' : 'bg-gray-400'
+                        }`}
+                        style={{ width: `${micLevel}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Live Transcription */}
+                  <div className="p-2 bg-white rounded border border-[#dddddd] min-h-[40px]">
+                    <div className="text-[10px] text-[#757575] mb-1">Live Transcription</div>
+                    <p className="text-xs text-[#333333] italic">
+                      {micTranscript || 'Speak to see transcription...'}
+                    </p>
+                  </div>
+                </>
+              )}
+
+              {micError && (
+                <p className="text-xs text-[#D0021B] mt-1">{micError}</p>
+              )}
+            </div>
           </div>
         )}
+
+        {/* Mic Permissions */}
+        <button
+          onClick={() => chrome.tabs.create({ url: chrome.runtime.getURL('src/permissions.html') })}
+          className="mt-3 w-full flex items-center justify-center gap-2 px-3 py-2 text-xs text-[#757575] hover:text-[#1B1F6B] bg-[#F5F7FA] hover:bg-[#EFF3F6] rounded-lg border border-[#dddddd] transition-colors"
+        >
+          <Mic className="w-3.5 h-3.5" />
+          Grant Microphone Access
+        </button>
       </div>
 
     </div>

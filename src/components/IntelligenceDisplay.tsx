@@ -75,81 +75,73 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
         </div>
       </div>
 
-      {/* Extracted Entities Grid */}
-      <div className="grid grid-cols-1 gap-2 text-sm">
-
-        {/* Business */}
-        <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Building2 className="w-4 h-4 text-[#F5841F] shrink-0" />
+      {/* Extracted Entities Grid - 2 columns */}
+      <div className="grid grid-cols-2 gap-1.5 text-sm">
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Building2 className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Business</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Business</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {businessNames.length > 0 ? businessNames.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-        {/* Email */}
-        <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Mail className="w-4 h-4 text-[#1B1F6B] shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Mail className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Email</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Email</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {emails.length > 0 ? emails.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-        {/* Phone */}
-        <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Phone className="w-4 h-4 text-green-400 shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Phone className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Phone</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Phone</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {phones.length > 0 ? phones.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-        {/* Website */}
-        <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Globe className="w-4 h-4 text-cyan-400 shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Globe className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Website</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Website</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {websites.length > 0 ? websites.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-        {/* Location */}
-        <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <MapPin className="w-4 h-4 text-orange-400 shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <MapPin className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Location</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Location</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {locations.length > 0 ? locations.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-         {/* Dates */}
-         <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Calendar className="w-4 h-4 text-pink-400 shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Calendar className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">Dates Mentioned</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">Dates</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {dates.length > 0 ? dates.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
 
-         {/* People */}
-         <div className="flex items-center gap-3 p-2 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <User className="w-4 h-4 text-indigo-400 shrink-0" />
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd] col-span-2">
+          <User className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-xs text-[#757575]">People</div>
-            <div className="font-medium text-[#333333] truncate">
+            <div className="text-[10px] text-[#757575]">People</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
                {people.length > 0 ? people.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
@@ -172,7 +164,7 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
           <div className="text-xs text-[#757575] mb-1">Discussion Topics</div>
            <div className="flex flex-wrap gap-1">
             {topics.length > 0 ? topics.slice(0, 2).map((topic, idx) => (
-              <span key={idx} className="px-1.5 py-0.5 text-[10px] bg-[#F5841F]/20 text-[#F5841F] rounded border border-[#F5841F]/30 truncate max-w-full">
+              <span key={idx} className="px-1.5 py-0.5 text-[10px] bg-[#1B1F6B]/20 text-[#1B1F6B] rounded border border-[#1B1F6B]/30 truncate max-w-full">
                 {topic.topic}
               </span>
             )) : <span className="text-xs text-[#757575] italic">--</span>}

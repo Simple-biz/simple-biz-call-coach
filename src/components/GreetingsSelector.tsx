@@ -68,12 +68,12 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
       </div>
 
       <div className="relative group">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#F5841F] rounded-lg blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#1B1F6B] rounded-lg blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
         <div className="relative p-2.5 bg-white backdrop-blur-md border border-[#dddddd] rounded-lg shadow-lg">
           <div className="flex items-start gap-1.5">
             <div className="mt-0.5 p-1 rounded-md bg-[#1B1F6B]/10 border border-[#1B1F6B]/20">
               {option?.id?.includes('greeting') ? (
-                <MessageSquare className="w-3 h-3 text-[#F5841F]" />
+                <MessageSquare className="w-3 h-3 text-[#1B1F6B]" />
               ) : (
                 <Zap className="w-3 h-3 text-[#1B1F6B]" />
               )}
@@ -86,7 +86,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
                 <span className="text-[8px] text-[#757575] font-mono">Mk1 v1</span>
               </div>
               <div
-                className="text-[12px] leading-snug text-[#333333] font-medium selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-0.5 rounded transition-colors"
+                className="text-[13px] leading-snug text-[#333333] font-normal selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-0.5 rounded transition-colors"
                 onClick={() => !isLoading && option && onSelect(option)}
                 title="Click to use this script"
               >

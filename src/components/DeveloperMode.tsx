@@ -85,11 +85,11 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-[#F5841F]" />
+          <Settings2 className="w-4 h-4 text-[#1B1F6B]" />
           <h3 className="text-sm font-bold text-[#333333]">Developer Mode</h3>
           <span className={`text-xs px-2 py-0.5 rounded-full font-semibold border ${
             environment === 'sandbox'
-              ? 'bg-[#F5841F]/20 text-[#F5841F] border-[#F5841F]/30'
+              ? 'bg-[#1B1F6B]/20 text-[#1B1F6B] border-[#1B1F6B]/30'
               : 'bg-[#1B1F6B]/20 text-[#1B1F6B] border-[#1B1F6B]/30'
           }`}>
             {environment.toUpperCase()}
@@ -97,7 +97,7 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
         </div>
         <button
           onClick={handleToggleEnvironment}
-          className="flex items-center gap-1 px-2 py-1 text-xs bg-[#F5841F] hover:bg-[#e0740f] text-white rounded transition-colors"
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-[#1B1F6B] hover:bg-[#14174f] text-white rounded transition-colors"
         >
           <RefreshCw className="w-3 h-3" />
           Switch to {environment === 'production' ? 'Sandbox' : 'Production'}
@@ -163,8 +163,8 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
             onClick={() => setSpeaker('customer')}
             className={`flex-1 px-3 py-2 text-xs font-semibold rounded-lg transition-all ${
               speaker === 'customer'
-                ? 'bg-[#F5841F] text-white border-2 border-[#F5841F]'
-                : 'bg-[#F5F7FA] text-[#757575] border-2 border-[#dddddd] hover:border-[#F5841F]/50'
+                ? 'bg-[#1B1F6B] text-white border-2 border-[#1B1F6B]'
+                : 'bg-[#F5F7FA] text-[#757575] border-2 border-[#dddddd] hover:border-[#1B1F6B]/50'
             }`}
           >
             Customer
@@ -205,14 +205,14 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
               type="checkbox"
               checked={autoResponse}
               onChange={(e) => setAutoResponse(e.target.checked)}
-              className="w-4 h-4 rounded border-[#dddddd] bg-white text-[#F5841F] focus:ring-2 focus:ring-[#1B1F6B]"
+              className="w-4 h-4 rounded border-[#dddddd] bg-white text-[#1B1F6B] focus:ring-2 focus:ring-[#1B1F6B]"
             />
             <span>Auto AI Response (for customer messages)</span>
           </label>
           <button
             onClick={handleSendMessage}
             disabled={!messageText.trim()}
-            className="flex items-center gap-2 px-4 py-2 text-sm bg-[#F5841F] hover:bg-[#e0740f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
+            className="flex items-center gap-2 px-4 py-2 text-sm bg-[#1B1F6B] hover:bg-[#14174f] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg transition-colors font-semibold"
           >
             <Send className="w-4 h-4" />
             Send as {speaker === 'agent' ? 'Agent' : 'Customer'}
@@ -221,12 +221,12 @@ export function DeveloperMode({ enabled }: DeveloperModeProps) {
       </div>
 
       {/* Info Note */}
-      <div className="mt-4 p-3 bg-[#F5841F]/10 border border-[#F5841F]/30 rounded-lg">
+      <div className="mt-4 p-3 bg-[#1B1F6B]/10 border border-[#1B1F6B]/30 rounded-lg">
         <div className="flex items-start gap-2">
-          <Database className="w-4 h-4 text-[#F5841F] mt-0.5 flex-shrink-0" />
-          <div className="text-xs text-[#F5841F]">
+          <Database className="w-4 h-4 text-[#1B1F6B] mt-0.5 flex-shrink-0" />
+          <div className="text-xs text-[#1B1F6B]">
             <p className="font-semibold mb-1">Sandbox Mode Features:</p>
-            <ul className="list-disc list-inside space-y-0.5 text-[#F5841F]/80">
+            <ul className="list-disc list-inside space-y-0.5 text-[#1B1F6B]/80">
               <li>No internet required - fully offline</li>
               <li>Mock WebSocket server at localhost:8080</li>
               <li>Uses Mark's 28 Golden Scripts locally</li>

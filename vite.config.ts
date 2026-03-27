@@ -4,7 +4,7 @@ import { crx, ManifestV3Export } from "@crxjs/vite-plugin";
 import path from "path";
 const manifest: ManifestV3Export = {
   manifest_version: 3,
-  name: "Simple.Biz Call Coach",
+  name: "Simple.biz Call Coach",
   version: "2.0.0",
   description: "Real-time AI-powered call coaching with AWS Lambda backend, conversation intelligence, and Developer Mode for offline testing",
   icons: {

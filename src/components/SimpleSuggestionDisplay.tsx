@@ -111,12 +111,12 @@ export function SimpleSuggestionDisplay({
       </div>
 
       <div className="relative group">
-        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#F5841F] rounded-xl blur opacity-10 group-hover:opacity-25 transition duration-500"></div>
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#1B1F6B] rounded-xl blur opacity-10 group-hover:opacity-25 transition duration-500"></div>
         <div className="relative p-4 bg-white backdrop-blur-md border border-[#dddddd] rounded-xl shadow-lg">
           <div className="flex items-start gap-3">
             <div className="mt-1 p-2 rounded-lg bg-[#1B1F6B]/10 border border-[#1B1F6B]/30">
               {option?.id?.includes('greeting') ? (
-                <MessageSquare className="w-4 h-4 text-[#F5841F]" />
+                <MessageSquare className="w-4 h-4 text-[#1B1F6B]" />
               ) : (
                 <Zap className="w-4 h-4 text-[#1B1F6B]" />
               )}
@@ -142,7 +142,7 @@ export function SimpleSuggestionDisplay({
                 </div>
               </div>
               <div
-                className="text-[14px] leading-relaxed text-[#333333] font-medium selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"
+                className="text-[13px] leading-snug text-[#333333] font-normal selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-1 rounded transition-colors"
                 onClick={() => !isLoading && option && onSelect(option)}
                 title="Click to use this script"
               >

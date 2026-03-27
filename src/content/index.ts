@@ -53,30 +53,32 @@ function showPageReloadNotification(): void {
       position: fixed;
       top: 20px;
       right: 20px;
-      background: #ff4444;
-      color: white;
-      padding: 16px 24px;
-      border-radius: 8px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      background: #ffffff;
+      color: #333333;
+      padding: 20px 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(27, 31, 107, 0.15);
+      border: 1px solid #dddddd;
       z-index: 999999;
       font-family: system-ui, -apple-system, sans-serif;
       font-size: 14px;
       max-width: 350px;
       animation: slideIn 0.3s ease-out;
     ">
-      <strong style="display: block; margin-bottom: 8px;">⚠️ Call Coach Extension Updated</strong>
-      <p style="margin: 0 0 12px 0; line-height: 1.4;">
+      <strong style="display: block; margin-bottom: 8px; color: #1B1F6B; font-size: 15px;">Simple.biz Call Coach Updated</strong>
+      <p style="margin: 0 0 14px 0; line-height: 1.5; color: #757575; font-size: 13px;">
         The extension was reloaded. Please refresh this page to reconnect.
       </p>
       <button id="call-coach-reload-btn" style="
-        background: white;
-        color: #ff4444;
+        background: #1B1F6B;
+        color: white;
         border: none;
-        padding: 8px 16px;
-        border-radius: 4px;
+        padding: 10px 20px;
+        border-radius: 8px;
         cursor: pointer;
-        font-weight: 600;
+        font-weight: 700;
         font-size: 13px;
+        width: 100%;
       ">
         Refresh Page Now
       </button>
