@@ -88,7 +88,7 @@ export const handler = async (
     if (!skipTip) {
       console.log(`[Intelligence] Generating AI tip...`);
 
-      let callStage: 'greeting' | 'discovery' | 'objection' | 'closing';
+      let callStage: 'greeting' | 'discovery' | 'objection' | 'closing' | 'conversion';
       if (transcriptCount < 5) {
         callStage = 'greeting';
       } else if (transcriptCount < 10) {
@@ -99,8 +99,42 @@ export const handler = async (
         callStage = 'closing';
       }
 
+      // Detect conversion: if customer agreed to callback, override stage
+      // NOTE: transcripts are DESC ordered (newest first), so slice(0, N) = most recent N
+      const recentCustomerMessages = transcripts
+        .slice(0, 10)
+        .filter(t => t.speaker === 'caller')
+        .map(t => t.text.toLowerCase());
+      const agreementSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
+      const hasAgreed = recentCustomerMessages.some(msg =>
+        agreementSignals.some(signal => msg.includes(signal))
+      );
+      // Also check if agent already asked for callback
+      const recentAgentMessages = transcripts
+        .slice(0, 10)
+        .filter(t => t.speaker === 'agent')
+        .map(t => t.text.toLowerCase());
+      // Must match callback-ask patterns specifically, not just any mention of "Bob" (e.g. "Bob and I are here" in intro)
+      const callbackPatterns = ['call later', 'callback', 'quick call', 'call you back', 'give you a call', 'bob or his partner'];
+      const askedCallback = recentAgentMessages.some(msg =>
+        callbackPatterns.some(p => msg.includes(p))
+      );
+
+      console.log('[Intelligence] Conversion detection:', {
+        customerMessages: recentCustomerMessages,
+        hasAgreed,
+        askedCallback,
+        currentStage: callStage
+      });
+
+      if (hasAgreed && askedCallback) {
+        callStage = 'conversion';
+        console.log('[Intelligence] Customer agreed to callback — switching to CONVERSION stage');
+      }
+
+      // Get most recent transcripts for AI context (DESC order → slice(0, N) then reverse for chronological)
       const contextWindow = 15;
-      const recentTranscripts = transcripts.slice(-contextWindow);
+      const recentTranscripts = transcripts.slice(0, contextWindow).reverse();
       const conversationContext = recentTranscripts
         .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
         .join('\n');
