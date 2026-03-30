@@ -21,7 +21,7 @@ const CACHE_HIT_TARGET = 0.90; // 90% cache hit rate
 
 export interface AITipRequest {
   conversationId: string;
-  callStage: 'greeting' | 'discovery' | 'objection' | 'closing';
+  callStage: 'greeting' | 'discovery' | 'objection' | 'closing' | 'conversion';
   recentTranscript: string;
   conversationSummary?: string;
   transcriptCount?: number;
@@ -118,33 +118,35 @@ WRONG OUTPUT (DO NOT DO THIS):
 
 CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
 1. Customer is AI assistant/voicemail (says "I'm Delta's AI", "Leave a message", "Press 1 for", etc.) → USE: Quick Intro [ID: intro-basic] and suggest asking for human/callback
-2. Customer asks "Who is this?" or "Who are you?" → USE: Basic Intro [ID: intro-basic]
-3. Customer asks "What do you need?" or "I'm busy" or "What is this about?" → USE: Affordable Hook [ID: hook-affordable]
-4. Customer says "We already have a website" or "I already have one" or "Not interested" → USE: Have One/Busy [ID: obj-busy-or-have]
-5. After agent delivered pitch AND handled objections → USE: Ask Callback [ID: ask-callback]
-6. Customer agrees to callback → USE: Get Email or Confirm Name
+2. ⚠️ HIGHEST PRIORITY — Customer has AGREED to callback (says "yes", "sure", "I'm good with that", "that works", "sounds good", "okay", etc. in response to callback ask) → IMMEDIATELY switch to CONVERSION stage. USE: Confirm Name, Get Email, or Confirm Authority — collect their details. NEVER re-ask for callback after agreement.
+3. Customer asks "Who is this?" or "Who are you?" → USE: Basic Intro [ID: intro-basic]
+4. Customer asks "What do you need?" or "I'm busy" or "What is this about?" → USE: Affordable Hook [ID: hook-affordable]
+5. Customer says "We already have a website" or "I already have one" or "Not interested" → USE: Have One/Busy [ID: obj-busy-or-have]
+6. After agent delivered pitch AND handled objections AND customer has NOT yet agreed → USE: Ask Callback [ID: ask-callback]
 7. Customer asks about ownership/control → USE: IP/Control Assurance
+8. Customer asks "what do you need from me?" or "do you need my details?" after agreeing → USE: Get Email or Confirm Name — they are ready to give info
 
 CRITICAL - AI ASSISTANT DETECTION:
 - If customer says "I'm [Company]'s AI assistant" or "Leave a message" or similar automated responses
 - Agent should acknowledge and ask for callback: "Would you mind if I can have Bob or his partner give you a quick call later?"
 - DO NOT treat automated deflection as objection or existing website claim
 
-STAGE DETERMINATION (Analyze transcript to determine current stage):
-- GREETING: First 1-2 exchanges, no pitch given yet
-- VALUE_PROP: Intro done, customer asking what you want, pitch not fully delivered
-- OBJECTION_HANDLING: Customer expressed resistance/objection/has existing solution
-- CLOSING: Pitch delivered, objections handled, time to ask for callback
-- CONVERSION: Customer agreed to callback, finalizing details
+STAGE DETERMINATION:
+- ⚠️ If Stage field says CONVERSION → TRUST IT ABSOLUTELY. The system has already confirmed the customer agreed. Do NOT re-analyze or downgrade to CLOSING. The callback is ALREADY secured — your ONLY job now is to collect details (name, email, confirm authority) or sign off. If you output "Ask Callback" or "Soft Close" when Stage is CONVERSION, you have FAILED.
+- For all other stages, you MAY override if the transcript clearly shows a different stage:
+  - GREETING: First 1-2 exchanges, no pitch given yet
+  - VALUE_PROP: Intro done, customer asking what you want, pitch not fully delivered
+  - OBJECTION_HANDLING: Customer expressed resistance/objection/has existing solution
+  - CLOSING: Pitch delivered, objections handled, time to ask for callback
+  - CONVERSION: Customer agreed. Collect info or sign off. NEVER go back.
 
-CONTEXT-AWARE PERSONALIZATION:
-- Keep 80%+ of Mark's proven wording EXACTLY as written
-- Make MINOR adjustments ONLY for:
-  1. Customer name (if mentioned in transcript, replace [Name] with their actual name)
-  2. Emotion awareness (if customer sounds frustrated: add brief acknowledgment / if excited: match energy)
-  3. Location (replace [Location] with actual city if known)
-- Remove ALL filler words: "uh", "uhm", "ah", "you know", "I mean", "Oh", "Oh okay", "Oh yeah"
-- Keep natural flow - sound conversational, not robotic
+SCRIPT SELECTION RULES:
+- Use Mark's scripts as your foundation — they are proven and effective.
+- You MAY add a brief custom sentence (1 sentence max) to acknowledge the customer's specific situation (their industry, question, or concern) BEFORE transitioning into a Mark script.
+- Example: Customer asks "Can you do painting websites?" → "Absolutely, we work with all kinds of local service businesses including painting companies." + then a Mark script like Ask Callback or Local Emphasis.
+- Replace [Name] with customer's actual name, [Location] with actual city if known.
+- Remove ALL filler words: "uh", "uhm", "ah", "you know", "I mean", "Oh"
+- Keep Mark's wording intact when using his scripts — do not paraphrase.
 - Goal: Build rapport → secure callback agreement`;
 
 
@@ -319,7 +321,8 @@ function getDefaultHeading(stage: string): string {
     greeting: 'Greet Prospect',
     discovery: 'Ask Discovery',
     objection: 'Handle Objection',
-    closing: 'Ask Callback'
+    closing: 'Ask Callback',
+    conversion: 'Collect Details'
   };
   return headings[stage] || 'Next Step';
 }
@@ -345,6 +348,11 @@ function getFallbackSuggestion(stage: string, latency: number): AITipResponse {
       heading: 'Ask Callback',
       stage: 'CLOSING',
       suggestion: 'Would you mind if I can have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?'
+    },
+    conversion: {
+      heading: 'Collect Details',
+      stage: 'CONVERSION',
+      suggestion: "And your name is? ... You're the owner? And what's your email?"
     }
   };
 

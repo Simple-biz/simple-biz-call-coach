@@ -705,7 +705,22 @@ async function processMessage(message: any, sender: any) {
         speaker: message.speaker || 'unknown',
       }
 
-      extensionState.transcriptions.push(transcriptionEntry)
+      // Find last entry from same speaker to handle interim dedup
+      let lastSameSpeakerIdx = -1
+      for (let i = extensionState.transcriptions.length - 1; i >= 0; i--) {
+        if (extensionState.transcriptions[i].speaker === transcriptionEntry.speaker) {
+          lastSameSpeakerIdx = i
+          break
+        }
+      }
+
+      if (lastSameSpeakerIdx >= 0 && !extensionState.transcriptions[lastSameSpeakerIdx].isFinal) {
+        // Last entry from this speaker was interim — replace it
+        extensionState.transcriptions[lastSameSpeakerIdx] = transcriptionEntry
+      } else {
+        // No interim to replace — append new entry
+        extensionState.transcriptions.push(transcriptionEntry)
+      }
 
       // Sort by timestamp to maintain correct order (dual streams may arrive out of order)
       extensionState.transcriptions.sort((a, b) => a.timestamp - b.timestamp)
