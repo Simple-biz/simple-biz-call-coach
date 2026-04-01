@@ -180,8 +180,7 @@ export class WebSocketStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
-        nodeModules: ['@anthropic-ai/sdk', 'pg']
+        externalModules: ['@aws-sdk/*']
       }
     });
 
@@ -234,8 +233,7 @@ export class WebSocketStack extends cdk.Stack {
       bundling: {
         minify: true,
         sourceMap: true,
-        externalModules: ['@aws-sdk/*'],
-        nodeModules: ['@anthropic-ai/sdk', 'pg']
+        externalModules: ['@aws-sdk/*']
       }
     });
 

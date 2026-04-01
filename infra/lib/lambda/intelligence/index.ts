@@ -5,6 +5,9 @@ import { generateConversationIntelligence } from '../shared/intelligence-client'
 import { generateAITip } from '../shared/claude-client-optimized';
 import { getCachedIntelligence, setCachedIntelligence } from './cache';
 
+// Track previous AI suggestions per conversation (Lambda memory — resets on cold start)
+const previousSuggestionsCache: Record<string, string[]> = {};
+
 /**
  * IntelligenceHandler Lambda Function
  *
@@ -105,9 +108,15 @@ export const handler = async (
         .slice(0, 10)
         .filter(t => t.speaker === 'caller')
         .map(t => t.text.toLowerCase());
-      const agreementSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
-      const hasAgreed = recentCustomerMessages.some(msg =>
-        agreementSignals.some(signal => msg.includes(signal))
+      // Direct agreement (requires agent to have asked for callback)
+      const directSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
+      const hasDirectAgreement = recentCustomerMessages.some(msg =>
+        directSignals.some(signal => msg.includes(signal))
+      );
+      // Indirect agreement (customer proactively asks for callback — no agent ask needed)
+      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me"];
+      const hasIndirectAgreement = recentCustomerMessages.some(msg =>
+        indirectSignals.some(signal => msg.includes(signal))
       );
       // Also check if agent already asked for callback
       const recentAgentMessages = transcripts
@@ -119,6 +128,7 @@ export const handler = async (
       const askedCallback = recentAgentMessages.some(msg =>
         callbackPatterns.some(p => msg.includes(p))
       );
+      const hasAgreed = (hasDirectAgreement && askedCallback) || hasIndirectAgreement;
 
       console.log('[Intelligence] Conversion detection:', {
         customerMessages: recentCustomerMessages,
@@ -127,9 +137,25 @@ export const handler = async (
         currentStage: callStage
       });
 
-      if (hasAgreed && askedCallback) {
+      if (hasAgreed) {
         callStage = 'conversion';
         console.log('[Intelligence] Customer agreed to callback — switching to CONVERSION stage');
+
+        // Check if customer already gave their details → force sign-off
+        const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
+        const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/;
+        const timePattern = /after \d|before \d|around \d|at \d|this afternoon|this evening|tomorrow|in the morning/i;
+        const alreadyToldYou = /already (said|gave|told)|i got it|yeah yeah/i;
+
+        const customerGaveName = recentCustomerMessages.some(msg => namePattern.test(msg));
+        const customerGaveNumber = recentCustomerMessages.some(msg => numberPattern.test(msg));
+        const customerGaveTime = recentCustomerMessages.some(msg => timePattern.test(msg));
+        const customerFrustrated = recentCustomerMessages.some(msg => alreadyToldYou.test(msg));
+
+        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated) {
+          callStage = 'signoff' as any;
+          console.log('[Intelligence] Customer already gave details — switching to SIGNOFF');
+        }
       }
 
       // Get most recent transcripts for AI context (DESC order → slice(0, N) then reverse for chronological)
@@ -139,17 +165,37 @@ export const handler = async (
         .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
         .join('\n');
 
+      // Get previous suggestions for this conversation
+      const prevSuggestions = previousSuggestionsCache[conversationId] || [];
+
       const aiTipStartTime = Date.now();
       const aiTip = await generateAITip({
         conversationId,
         callStage,
         recentTranscript: conversationContext,
         conversationSummary: intelligence.summary,
-        transcriptCount
+        transcriptCount,
+        previousSuggestions: prevSuggestions,
+        collectedInfo: {
+          customerName: (intelligence.entities?.people?.length ?? 0) > 0,
+          businessName: (intelligence.entities?.businessNames?.length ?? 0) > 0,
+          phoneNumber: (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0,
+          email: (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0,
+        },
       });
       const aiTipLatency = Date.now() - aiTipStartTime;
 
-      console.log(`[Intelligence] AI Tip generated in ${aiTipLatency}ms, Stage: ${aiTip.stage}, Heading: ${aiTip.heading}`);
+      // Track this suggestion
+      if (!previousSuggestionsCache[conversationId]) {
+        previousSuggestionsCache[conversationId] = [];
+      }
+      previousSuggestionsCache[conversationId].push(aiTip.suggestion);
+      // Keep last 10 suggestions max
+      if (previousSuggestionsCache[conversationId].length > 10) {
+        previousSuggestionsCache[conversationId] = previousSuggestionsCache[conversationId].slice(-10);
+      }
+
+      console.log(`[Intelligence] AI Tip generated in ${aiTipLatency}ms, Stage: ${aiTip.stage}, Heading: ${aiTip.heading}, Previous suggestions: ${prevSuggestions.length}`);
 
       // Save AI recommendation to database
       const recommendationId = await saveAIRecommendation({
