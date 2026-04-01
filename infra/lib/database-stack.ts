@@ -18,7 +18,7 @@ export class DatabaseStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      removalPolicy: cdk.RemovalPolicy.DESTROY, // For dev - change to RETAIN for production
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       pointInTimeRecovery: true
     });
 
@@ -45,7 +45,7 @@ export class DatabaseStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'ttl',
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
       pointInTimeRecovery: true
     });
 
