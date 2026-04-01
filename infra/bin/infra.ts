@@ -18,6 +18,11 @@ const backendApiKey = process.env.BACKEND_API_KEY || '';
 const callToolsWebhookSecret = process.env.CALLTOOLS_WEBHOOK_SECRET || '';
 const alertEmail = process.env.ALERT_EMAIL || 'cob@example.com';
 
+// Read infrastructure IDs from environment
+const vpcId = process.env.VPC_ID || '';
+const privateSubnetIds = (process.env.PRIVATE_SUBNET_IDS || '').split(',').filter(Boolean);
+const rdsSecurityGroupId = process.env.RDS_SECURITY_GROUP_ID || '';
+
 // Validate required environment variables
 if (!rdsConnectionString) {
   throw new Error('DATABASE_URL environment variable is required');
@@ -25,6 +30,10 @@ if (!rdsConnectionString) {
 
 if (!anthropicApiKey) {
   throw new Error('ANTHROPIC_API_KEY environment variable is required');
+}
+
+if (!vpcId || privateSubnetIds.length === 0 || !rdsSecurityGroupId) {
+  throw new Error('VPC_ID, PRIVATE_SUBNET_IDS, and RDS_SECURITY_GROUP_ID environment variables are required');
 }
 
 console.log('🚀 Deploying DevAssist Call Coach AWS Infrastructure');
@@ -49,6 +58,9 @@ const webSocketStack = new WebSocketStack(app, 'DevAssist-WebSocket', {
   anthropicApiKey,
   backendApiKey,
   callToolsWebhookSecret,
+  vpcId,
+  privateSubnetIds,
+  rdsSecurityGroupId,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: 'us-east-1'
@@ -60,8 +72,8 @@ webSocketStack.addDependency(databaseStack);
 // Monitoring Stack (CloudWatch + X-Ray + SNS)
 const monitoringStack = new MonitoringStack(app, 'DevAssist-Monitoring', {
   webSocketApi: webSocketStack.webSocketApi,
-  connectHandlerName: 'DevAssist-WebSocket-ConnectHandler',
-  transcriptHandlerName: 'DevAssist-WebSocket-TranscriptHandler',
+  connectHandlerName: webSocketStack.connectHandlerName,
+  transcriptHandlerName: webSocketStack.transcriptHandlerName,
   alertEmail,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,

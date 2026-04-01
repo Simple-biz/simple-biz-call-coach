@@ -17,11 +17,16 @@ export interface WebSocketStackProps extends cdk.StackProps {
   anthropicApiKey: string;
   backendApiKey: string;
   callToolsWebhookSecret: string;
+  vpcId: string;
+  privateSubnetIds: string[];
+  rdsSecurityGroupId: string;
 }
 
 export class WebSocketStack extends cdk.Stack {
   public readonly webSocketApi: apigatewayv2.WebSocketApi;
   public readonly webSocketUrl: string;
+  public readonly connectHandlerName: string;
+  public readonly transcriptHandlerName: string;
 
   constructor(scope: Construct, id: string, props: WebSocketStackProps) {
     super(scope, id, props);
@@ -42,7 +47,7 @@ export class WebSocketStack extends cdk.Stack {
       DATABASE_URL: props.rdsConnectionString,
       API_KEYS_SECRET_ARN: apiKeysSecret.secretArn,
       CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
-      CLAUDE_SONNET_MODEL: 'claude-haiku-4-5-20251001',
+      CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20251001',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 
@@ -52,13 +57,13 @@ export class WebSocketStack extends cdk.Stack {
 
     // Lookup existing VPC where RDS database is running
     const vpc = ec2.Vpc.fromLookup(this, 'RdsVpc', {
-      vpcId: 'vpc-059fe4065ccc95a67'
+      vpcId: props.vpcId
     });
 
-    // Import the private subnets we created
-    const privateSubnet1a = ec2.Subnet.fromSubnetId(this, 'PrivateSubnet1a', 'subnet-0a927d442cacaa034');
-    const privateSubnet1b = ec2.Subnet.fromSubnetId(this, 'PrivateSubnet1b', 'subnet-0f7dad7c982457924');
-    const privateSubnet1c = ec2.Subnet.fromSubnetId(this, 'PrivateSubnet1c', 'subnet-053c8588b4ba9b13c');
+    // Import the private subnets
+    const privateSubnets = props.privateSubnetIds.map((subnetId, index) =>
+      ec2.Subnet.fromSubnetId(this, `PrivateSubnet${index}`, subnetId)
+    );
 
     // Security Group for Lambda functions
     const lambdaSecurityGroup = new ec2.SecurityGroup(this, 'LambdaSecurityGroup', {
@@ -71,7 +76,7 @@ export class WebSocketStack extends cdk.Stack {
     const rdsSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
       this,
       'RdsSecurityGroup',
-      'sg-0c836ac7757980973'
+      props.rdsSecurityGroupId
     );
 
     // Allow Lambda to connect to RDS on PostgreSQL port
@@ -152,7 +157,7 @@ export class WebSocketStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
-        subnets: [privateSubnet1a, privateSubnet1b, privateSubnet1c]
+        subnets: privateSubnets
       },
       securityGroups: [lambdaSecurityGroup],
       bundling: {
@@ -174,7 +179,7 @@ export class WebSocketStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
-        subnets: [privateSubnet1a, privateSubnet1b, privateSubnet1c]
+        subnets: privateSubnets
       },
       securityGroups: [lambdaSecurityGroup],
       bundling: {
@@ -204,7 +209,7 @@ export class WebSocketStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
-        subnets: [privateSubnet1a, privateSubnet1b, privateSubnet1c]
+        subnets: privateSubnets
       },
       securityGroups: [lambdaSecurityGroup],
       bundling: {
@@ -227,7 +232,7 @@ export class WebSocketStack extends cdk.Stack {
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
-        subnets: [privateSubnet1a, privateSubnet1b, privateSubnet1c]
+        subnets: privateSubnets
       },
       securityGroups: [lambdaSecurityGroup],
       bundling: {
@@ -254,10 +259,12 @@ export class WebSocketStack extends cdk.Stack {
     props.connectionsTable.grantReadData(intelligenceHandler);
     props.connectionsTable.grantReadData(defaultHandler);
 
-    // Grant RDS access via IAM (if RDS supports IAM auth)
+    // Grant RDS access via IAM (scoped to specific DB)
     const rdsPolicy = new iam.PolicyStatement({
       actions: ['rds-db:connect'],
-      resources: ['*']
+      resources: [
+        `arn:aws:rds-db:${this.region}:${this.account}:dbuser:*/*`
+      ]
     });
     [startConversationHandler, transcriptHandler, endConversationHandler, intelligenceHandler].forEach(fn => {
       fn.addToRolePolicy(rdsPolicy);
@@ -369,11 +376,19 @@ export class WebSocketStack extends cdk.Stack {
     const webhookUrl = webhookHandler.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.NONE, // Auth handled in Lambda via Bearer token
       cors: {
-        allowedOrigins: ['*'],
+        allowedOrigins: [
+          'https://*.calltools.io',
+          'https://calltools.io',
+          'https://west-3.calltools.io',
+        ],
         allowedMethods: [lambda.HttpMethod.POST],
         allowedHeaders: ['Content-Type', 'Authorization'],
       },
     });
+
+    // Export handler names for monitoring stack
+    this.connectHandlerName = connectHandler.functionName;
+    this.transcriptHandlerName = transcriptHandler.functionName;
 
     // Outputs
     new cdk.CfnOutput(this, 'WebhookURL', {
