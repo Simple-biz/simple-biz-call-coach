@@ -175,7 +175,13 @@ export const handler = async (
         recentTranscript: conversationContext,
         conversationSummary: intelligence.summary,
         transcriptCount,
-        previousSuggestions: prevSuggestions
+        previousSuggestions: prevSuggestions,
+        collectedInfo: {
+          customerName: (intelligence.entities?.people?.length ?? 0) > 0,
+          businessName: (intelligence.entities?.businessNames?.length ?? 0) > 0,
+          phoneNumber: (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0,
+          email: (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0,
+        },
       });
       const aiTipLatency = Date.now() - aiTipStartTime;
 

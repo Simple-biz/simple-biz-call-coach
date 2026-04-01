@@ -26,6 +26,12 @@ export interface AITipRequest {
   conversationSummary?: string;
   transcriptCount?: number;
   previousSuggestions?: string[];
+  collectedInfo?: {
+    customerName: boolean;
+    businessName: boolean;
+    phoneNumber: boolean;
+    email: boolean;
+  };
 }
 
 export interface AITipResponse {
@@ -192,8 +198,12 @@ CRITICAL - AI ASSISTANT / RECEPTIONIST DETECTION:
 
 STAGE DETERMINATION:
 - ⚠️ If Stage field says CONVERSION → The customer already agreed. Do NOT downgrade to CLOSING or re-pitch.
-  - CONVERSION flow: Ask Name → Ask Number/Email → Sign Off. That's it. 3 steps max.
-  - If customer already stated their name (e.g. "It's Maria", "My name is...") → do NOT ask for name again. Move to next detail or Sign Off.
+  - CONVERSION flow: Ask Name → Ask Business Name → Ask Number/Email → Sign Off. That's it. 4 steps max.
+  - ⚠️ CHECK the "COLLECTED INFO" section in the prompt. It tells you what the agent HAS and HAS NOT collected yet.
+  - If customerName is NOT collected → Ask for their name FIRST using Confirm Name: "And your name is?"
+  - If customerName IS collected but businessName is NOT → Ask: "And what's the name of your business?"
+  - If both name and business are collected but no number/email → USE Collect Details: "What's the best number and time to reach you at?"
+  - If customer already stated their name (e.g. "It's Maria", "My name is...") → do NOT ask for name again. Move to next detail.
   - If customer already gave callback time (e.g. "call after 4", "this afternoon") → do NOT ask when to call. Move to Sign Off.
   - If customer says "I already said yes", "I already gave you that", "I already told you" → USE Sign Off IMMEDIATELY.
 - ⚠️ If Stage field says SIGNOFF → Output ONLY a Sign Off script. Example: "Got it, [Name]! Bob will call you [time]. Have a beautiful day and I'm super excited for you. Take care!"
@@ -360,6 +370,16 @@ function buildCompressedPrompt(request: AITipRequest): string {
     `Stage: ${request.callStage}`,
     `Transcript Count: ${request.transcriptCount || 0}`
   ];
+
+  // Include collected info so Claude knows what's missing during CONVERSION
+  if (request.collectedInfo) {
+    const info = request.collectedInfo;
+    parts.push(`\nCOLLECTED INFO (what the agent has/hasn't gathered):`);
+    parts.push(`  customerName: ${info.customerName ? 'YES' : 'NO — ask for it'}`);
+    parts.push(`  businessName: ${info.businessName ? 'YES' : 'NO — ask for it'}`);
+    parts.push(`  phoneNumber: ${info.phoneNumber ? 'YES' : 'NO'}`);
+    parts.push(`  email: ${info.email ? 'YES' : 'NO'}`);
+  }
 
   // Include recent conversation (last 10-15 messages with speaker labels)
   // This gives Claude proper context to understand the conversation flow
