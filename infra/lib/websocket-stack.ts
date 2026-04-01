@@ -377,9 +377,9 @@ export class WebSocketStack extends cdk.Stack {
       authType: lambda.FunctionUrlAuthType.NONE, // Auth handled in Lambda via Bearer token
       cors: {
         allowedOrigins: [
-          'https://*.calltools.io',
           'https://calltools.io',
           'https://west-3.calltools.io',
+          'https://app.calltools.io',
         ],
         allowedMethods: [lambda.HttpMethod.POST],
         allowedHeaders: ['Content-Type', 'Authorization'],

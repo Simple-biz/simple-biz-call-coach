@@ -84,6 +84,9 @@ export async function generateConversationIntelligence(params: {
   // Static system prompt (cached across invocations for ~90% cost reduction)
   const systemPrompt = `You analyze sales conversations and extract intelligence in JSON format.
 
+IMPORTANT: This is a sales call between an AGENT (seller) and a CALLER/CUSTOMER (buyer/prospect).
+Extract entities ONLY from what the CUSTOMER/CALLER says. Ignore the agent's own name, company, and contact info.
+
 Extract and return ONLY valid JSON with this structure:
 {
   "sentiment": {
@@ -99,23 +102,25 @@ Extract and return ONLY valid JSON with this structure:
   ],
   "summary": "1-2 sentence summary of conversation status and customer disposition",
   "entities": {
-    "businessNames": ["company names mentioned"],
+    "businessNames": ["CUSTOMER's business names only — NOT the agent's company"],
     "contactInfo": {
-      "emails": ["email addresses found"],
-      "phoneNumbers": ["phone numbers in any format"],
-      "urls": ["website domains or URLs — include domains like 'simple.biz', 'acme.com', etc. even without http://"]
+      "emails": ["CUSTOMER's email addresses only"],
+      "phoneNumbers": ["CUSTOMER's phone numbers only — NOT numbers the agent mentions"],
+      "urls": ["CUSTOMER's website URLs only — NOT the agent's company domain"]
     },
     "locations": ["cities, states, countries, street addresses"],
     "dates": ["ANY date, time, day, or scheduling reference — e.g. 'tomorrow', 'March 19', '9AM', 'Thursday afternoon', 'next week'"],
-    "people": ["person names mentioned"]
+    "people": ["CUSTOMER's name only — NOT the agent's name, NOT 'Bob' or other agent team members"]
   }
 }
 
 IMPORTANT extraction rules:
-- urls: Extract ANY website or domain mentioned (e.g. "simple.biz", "google.com", "acme.io"). Do NOT require "http://" or "www".
+- ONLY extract entities from [CALLER] lines. The agent's info (their name, company, Bob, partner) must be EXCLUDED.
+- urls: Extract ANY website or domain the CUSTOMER mentions. Do NOT include the agent's company domain (e.g. "simple.biz", "support.biz").
 - dates: Extract ALL time references including relative ones ("tomorrow", "next Monday", "this Thursday") and specific ones ("March 19 at 9AM", "2pm").
-- phoneNumbers: Extract numbers in any format — (555) 555-5555, 555-555-5555, etc.
-- people: Extract first names and full names of anyone mentioned.
+- phoneNumbers: Extract numbers the CUSTOMER provides. Do NOT include numbers the agent offers.
+- people: Extract the CUSTOMER's name only. Do NOT include the agent's name, "Bob", or other agent team members.
+- businessNames: Extract the CUSTOMER's business name. Do NOT include the agent's company name.
 
 Common intents: interested, not_interested, pricing_inquiry, request_callback, objection, purchase_intent, information_seeking
 Common topics: pricing, services, website_optimization, SEO, marketing, scheduling, follow_up
