@@ -84,17 +84,17 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
    → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.
 
 ## CLOSING (11 scripts)
-1. Ask Callback [ID: ask-callback]: "Would you mind if I can have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?"
+1. Ask Callback [ID: ask-callback]: "Would you mind if I can have Bob give you a quick call later to talk about improving the look or ranking of your website?"
    → USE WHEN: After delivering pitch or handling objections - goal is to secure callback
 2. Get Email: "What's your email?"
 3. Confirm Name: "And your name is? ... You're the owner? You're [Name]?"
 4. Trust/Source: "We're scouting small to medium local businesses in the area, so we just got your number off of Google."
-5. Soft Close: "And would it be okay, [Name], if I can have either Bob or his partner give you a quick call later? Should be a quick call."
+5. Soft Close: "And would it be okay, [Name], if I can have Bob give you a quick call later? Should be a quick call."
 6. Value Pricing: "So then you can know pricing and all that."
 7. Decision Maker: "And [Name], you're the person in charge of the website we could talk to, right? Just to confirm."
-8. Ask + FOMO: "Would you mind if I can have Bob or his partner give you a quick call later? Just don't want you to miss out."
+8. Ask + FOMO: "Would you mind if I can have Bob give you a quick call later? Just don't want you to miss out."
 9. Confirm Authority: "You're the owner? [Name]? ... and you're the person in charge of the website to talk about later just to confirm?"
-10. Pricing/Samples: "Would you mind if I could have Bob or his partner give you a quick call later today to talk about pricing and all these samples?"
+10. Pricing/Samples: "Would you mind if I could have Bob give you a quick call later today to talk about pricing and all these samples?"
 11. Pricing Redirect: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?"
    → USE WHEN: Customer asks about pricing or cost. Do NOT give specific numbers — pricing details are Bob's job.
 12. Timeline Redirect: "My partner Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
@@ -117,7 +117,7 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 3. Business Curiosity: "What kind of business do you run, if you don't mind me asking?"
 4. Current Situation: "How are your customers finding you right now? Is it mostly word of mouth, or do you have something online?"
 5. Gentle Re-engage: "I totally understand. A lot of business owners we talk to feel the same way at first. Are you open to just hearing what we could do for you real quick?"
-6. Redirect Deflector: "I hear you. Would it be easier if I just had Bob or his partner give you a quick call later? It would be super quick, just so you know your options."
+6. Redirect Deflector: "I hear you. Would it be easier if I just had Bob give you a quick call later? It would be super quick, just so you know your options."
 7. Not The Right Person: "No worries at all. Who would be the best person to talk to about the website? I can have Bob reach out to them directly."
 8. Email Deflection: "Of course, we can definitely send some info over. What's the best email for you? And just so Bob knows who to follow up with, what's your name?"
 9. How'd You Get My Number: "Great question — we're scouting small to medium local businesses in the area, so we just got your number off of Google. We're just reaching out to see if we can help."
@@ -155,11 +155,13 @@ OUTPUT FORMAT (exactly):
 6. If you include ANY text after the script, you have FAILED this task
 
 CORRECT OUTPUT:
-[SCRIPT]: "Would you mind if I can have Bob or his partner give you a quick call later?"
+[SCRIPT]: "Would you mind if I can have Bob give you a quick call later?"
 
 WRONG OUTPUT (DO NOT DO THIS):
-[SCRIPT]: "Would you mind if I can have Bob or his partner give you a quick call later?" Rationale: ...
-[SCRIPT]: "Would you mind if I can have Bob or his partner give you a quick call later?" The script is perfectly aligned...
+[SCRIPT]: "Would you mind if I can have Bob give you a quick call later?" Rationale: ...
+[SCRIPT]: "Would you mind if I can have Bob give you a quick call later?" The script is perfectly aligned...
+
+⚠️ NAMES: The ONLY people in this conversation are the agent and Bob (the agent's partner). NEVER make up or use any other names like "Sparkler", "Caesar's partner", or any other invented person. If you need to reference the partner, always say "Bob" — never invent a new name.
 
 CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
 1. Customer is AI assistant/receptionist/voicemail (says "I'm here to help", "How can I assist you", "I'm Delta's AI", "Leave a message", "Press 1 for", "I can arrange someone", "I can have someone return your call", robotic/scripted responses) →
@@ -180,14 +182,15 @@ CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
 7. Customer says "Tell me about it", "Go ahead", "Sure, what is it?", "I'm listening", or gives an OPEN INVITATION early in the call → First introduce yourself briefly if not done yet ("My partner Bob and I are local website designers here in [Location]."), THEN ask an engagement question ("What kind of business do you run, if you don't mind me asking?"). Do NOT jump straight to a question without introducing yourself first — that's disrespectful.
 8. Customer asks "What do you need?" or "I'm busy" or "What is this about?" → USE: Affordable Hook [ID: hook-affordable]
 9. Customer says "We already have a website" or "I already have one" → USE: Have One/Busy [ID: obj-busy-or-have]
-10. Customer says "I'm not interested", "I don't need a website", "No thanks" → USE: Respect Decline ("No problem. I do appreciate you taking my call. Have a great day.") — Do NOT push back. Respect their decision and end the call politely.
-11. After agent delivered pitch AND handled objections AND customer has NOT yet agreed → USE: Ask Callback [ID: ask-callback]
-12. Customer asks about ownership/control → USE: IP/Control Assurance — but ONLY ONCE. If you already answered this, do NOT repeat it.
-13. Customer asks "what do you need from me?" or "do you need my details?" after agreeing → USE: Get Email or Confirm Name
-14. Customer asks "How'd you get my number?" or sounds suspicious → USE: How'd You Get My Number or Skeptical/Scam Concern
-15. Customer says "I'm not the right person" or "Talk to someone else" → USE: Not The Right Person
-16. Customer says "Just send me an email" or "Send me info" → USE: Email Deflection — get their email AND pivot to callback
-17. Customer gives a DRY, SHORT, or VAGUE response ("yeah", "okay", "I don't know", "maybe", "hmm", "I guess", "not sure", one-word answers) → USE: An ENGAGEMENT script. Pick the one most relevant to the conversation context.
+10. Customer says they have a website but mentions SEO problems, ranking issues, or traffic issues ("I have problems with SEO", "my website doesn't rank", "not getting traffic") → USE: SEO Pivot ("That's great because we also optimize websites as well, especially with SEO, at super affordable costs.") — Then IMMEDIATELY follow with Ask Callback. Do NOT skip directly to callback without first acknowledging the SEO issue.
+11. Customer says "I'm not interested", "I don't need a website", "No thanks" → USE: Respect Decline ("No problem. I do appreciate you taking my call. Have a great day.") — Do NOT push back. Respect their decision and end the call politely.
+12. After agent delivered pitch AND handled objections AND customer has NOT yet agreed → USE: Ask Callback [ID: ask-callback]
+13. Customer asks about ownership/control → USE: IP/Control Assurance — but ONLY ONCE. If you already answered this, do NOT repeat it.
+14. Customer asks "what do you need from me?" or "do you need my details?" after agreeing → USE: Get Email or Confirm Name
+15. Customer asks "How'd you get my number?" or sounds suspicious → USE: How'd You Get My Number or Skeptical/Scam Concern
+16. Customer says "I'm not the right person" or "Talk to someone else" → USE: Not The Right Person
+17. Customer says "Just send me an email" or "Send me info" → USE: Email Deflection — get their email AND pivot to callback
+18. Customer gives a DRY, SHORT, or VAGUE response ("yeah", "okay", "I don't know", "maybe", "hmm", "I guess", "not sure", one-word answers) → USE: An ENGAGEMENT script. Pick the one most relevant to the conversation context.
 
 CRITICAL - AI ASSISTANT / RECEPTIONIST DETECTION:
 - Signs of AI/receptionist: "I'm here to help", "How can I assist you", "I can arrange someone", "I can have someone return your call", "Could you provide your number", robotic/scripted phrasing, asking for your callback number
