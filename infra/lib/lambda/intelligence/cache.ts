@@ -14,7 +14,7 @@ interface CachedIntelligence {
 }
 
 let intelligenceCache: CachedIntelligence | null = null;
-const CACHE_MAX_AGE_MS = 30_000; // 30s max staleness
+const CACHE_MAX_AGE_MS = 15_000; // 15s max staleness (keep fresh during CONVERSION)
 
 export function getCachedIntelligence(conversationId: string): IntelligenceResult | null {
   if (!intelligenceCache) return null;

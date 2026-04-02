@@ -142,17 +142,19 @@ export const handler = async (
         console.log('[Intelligence] Customer agreed to callback — switching to CONVERSION stage');
 
         // Check if customer already gave their details → force sign-off
-        const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
-        const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/;
-        const timePattern = /after \d|before \d|around \d|at \d|this afternoon|this evening|tomorrow|in the morning/i;
+        const namePattern = /my name is \w+|the name(?:'s| is) \w+|i'm \w+[^.?!]*(?:my name|call me)|call me \w+/i;
+        const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}|five|six|seven|eight|nine|zero|one|two|three|four/i;
+        const emailPattern = /@|at gmail|at yahoo|at hotmail|at outlook|dot com|\.com/i;
+        const timePattern = /\d+\s*(?:am|pm|a\.m|p\.m)|after \d|before \d|around \d|at \d|this afternoon|this evening|tomorrow|in the morning|tonight|after (?:lunch|dinner|work|school)/i;
         const alreadyToldYou = /already (said|gave|told)|i got it|yeah yeah/i;
 
         const customerGaveName = recentCustomerMessages.some(msg => namePattern.test(msg));
         const customerGaveNumber = recentCustomerMessages.some(msg => numberPattern.test(msg));
+        const customerGaveEmail = recentCustomerMessages.some(msg => emailPattern.test(msg));
         const customerGaveTime = recentCustomerMessages.some(msg => timePattern.test(msg));
         const customerFrustrated = recentCustomerMessages.some(msg => alreadyToldYou.test(msg));
 
-        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated) {
+        if ((customerGaveName && customerGaveTime) || (customerGaveNumber && customerGaveTime) || (customerGaveEmail && customerGaveTime) || customerGaveNumber || customerGaveEmail || customerFrustrated) {
           callStage = 'signoff' as any;
           console.log('[Intelligence] Customer already gave details — switching to SIGNOFF');
         }
