@@ -91,16 +91,32 @@ export const handler = async (
     if (!skipTip) {
       console.log(`[Intelligence] Generating AI tip...`);
 
+      // Count conversation TURNS (speaker changes), not raw transcript fragments
+      // Deepgram splits speech into fragments, so 1 turn = multiple rows
+      // e.g. "Hello? / Who is this?" = 2 rows but 1 customer turn
+      let turnCount = 0;
+      let lastSpeaker = '';
+      // transcripts are DESC order, reverse to count chronologically
+      const chronological = [...transcripts].reverse();
+      for (const t of chronological) {
+        if (t.speaker !== lastSpeaker) {
+          turnCount++;
+          lastSpeaker = t.speaker;
+        }
+      }
+
       let callStage: 'greeting' | 'discovery' | 'objection' | 'closing' | 'conversion';
-      if (transcriptCount < 5) {
+      if (turnCount < 4) {
         callStage = 'greeting';
-      } else if (transcriptCount < 10) {
+      } else if (turnCount < 8) {
         callStage = 'discovery';
-      } else if (transcriptCount < 20) {
+      } else if (turnCount < 14) {
         callStage = 'objection';
       } else {
         callStage = 'closing';
       }
+
+      console.log(`[Intelligence] Turn count: ${turnCount} (from ${transcriptCount} transcript rows), stage: ${callStage}`);
 
       // Detect conversion: if customer agreed to callback, override stage
       // NOTE: transcripts are DESC ordered (newest first), so slice(0, N) = most recent N
