@@ -1,3 +1,4 @@
+// v2 — cache TTL reduced for fresher context
 import { IntelligenceResult } from '../shared/intelligence-client';
 
 /**
@@ -14,7 +15,7 @@ interface CachedIntelligence {
 }
 
 let intelligenceCache: CachedIntelligence | null = null;
-const CACHE_MAX_AGE_MS = 30_000; // 30s max staleness
+const CACHE_MAX_AGE_MS = 5_000; // 5s max staleness (keep fresh for accurate context)
 
 export function getCachedIntelligence(conversationId: string): IntelligenceResult | null {
   if (!intelligenceCache) return null;

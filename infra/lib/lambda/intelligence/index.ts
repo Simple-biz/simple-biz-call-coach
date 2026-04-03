@@ -1,3 +1,4 @@
+// v2 — hybrid prompt fixes + infra improvements
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConnection } from '../shared/dynamo-client';
 import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
@@ -91,16 +92,30 @@ export const handler = async (
     if (!skipTip) {
       console.log(`[Intelligence] Generating AI tip...`);
 
+      // Count conversation TURNS (speaker changes), not raw transcript fragments
+      // Deepgram splits speech into fragments, so 1 turn = multiple rows
+      let turnCount = 0;
+      let lastSpeaker = '';
+      const chronological = [...transcripts].reverse();
+      for (const t of chronological) {
+        if (t.speaker !== lastSpeaker) {
+          turnCount++;
+          lastSpeaker = t.speaker;
+        }
+      }
+
       let callStage: 'greeting' | 'discovery' | 'objection' | 'closing' | 'conversion';
-      if (transcriptCount < 5) {
+      if (turnCount < 4) {
         callStage = 'greeting';
-      } else if (transcriptCount < 10) {
+      } else if (turnCount < 8) {
         callStage = 'discovery';
-      } else if (transcriptCount < 20) {
+      } else if (turnCount < 14) {
         callStage = 'objection';
       } else {
         callStage = 'closing';
       }
+
+      console.log(`[Intelligence] Turn count: ${turnCount} (from ${transcriptCount} transcript rows), stage: ${callStage}`);
 
       // Detect conversion: if customer agreed to callback, override stage
       // NOTE: transcripts are DESC ordered (newest first), so slice(0, N) = most recent N
@@ -114,7 +129,7 @@ export const handler = async (
         directSignals.some(signal => msg.includes(signal))
       );
       // Indirect agreement (customer proactively asks for callback — no agent ask needed)
-      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me"];
+      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow"];
       const hasIndirectAgreement = recentCustomerMessages.some(msg =>
         indirectSignals.some(signal => msg.includes(signal))
       );
@@ -144,7 +159,7 @@ export const handler = async (
         // Check if customer already gave their details → force sign-off
         const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
         const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/;
-        const timePattern = /after \d|before \d|around \d|at \d|this afternoon|this evening|tomorrow|in the morning/i;
+        const timePattern = /after \d|before \d|around \d|at \d|at\d|\d+\s*pm|\d+\s*am|this afternoon|this evening|tomorrow|in the morning|tonight/i;
         const alreadyToldYou = /already (said|gave|told)|i got it|yeah yeah/i;
 
         const customerGaveName = recentCustomerMessages.some(msg => namePattern.test(msg));
@@ -159,7 +174,7 @@ export const handler = async (
       }
 
       // Get most recent transcripts for AI context (DESC order → slice(0, N) then reverse for chronological)
-      const contextWindow = 15;
+      const contextWindow = 25;
       const recentTranscripts = transcripts.slice(0, contextWindow).reverse();
       const conversationContext = recentTranscripts
         .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)

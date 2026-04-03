@@ -114,10 +114,13 @@ function startAutoAnalysisLoop() {
 
      const conversationId = extensionState.conversationId;
      if (conversationId) {
-        // Trigger intelligence update
+        // Trigger intelligence update only (no tip generation — tips are manual)
         awsWebSocketService.getIntelligence(conversationId);
      }
-  }, 10000);
+  }, 10000
+
+
+);
 }
 
 function stopAutoAnalysisLoop() {
