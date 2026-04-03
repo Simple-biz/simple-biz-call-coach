@@ -1,3 +1,4 @@
+// v4 — Haiku-only model, Bob Transition script
 import Anthropic from '@anthropic-ai/sdk';
 import { getSecret } from './secrets-client';
 
@@ -13,7 +14,7 @@ async function getAnthropicClient(): Promise<Anthropic> {
 }
 
 const HAIKU_MODEL = process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20250929';
-const SONNET_MODEL = process.env.CLAUDE_SONNET_MODEL || 'claude-sonnet-4-5-20250929';
+const SONNET_MODEL = process.env.CLAUDE_SONNET_MODEL || 'claude-sonnet-4-5-20250929';  // Correct: 20250929 not 20251001
 
 // Performance targets
 const MAX_LATENCY_MS = 2000; // CEO requirement: <3s total, budget 2s for Claude
@@ -63,6 +64,8 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 3. Targeted Opener: "Good morning, is [Name] available please?"
 4. Quick Intro: "Real quick though, my name is [Agent], and my partner Bob and I are here; we're local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → ALWAYS end with a question.
+5. Bob Transition (skip name): "My partner Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
+   → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.
 
 ## VALUE PROPOSITION (3 scripts)
 1. Affordable Hook [ID: hook-affordable]: "We're just wondering if you're interested in building or updating your website, since we're super affordable. Just don't want you to miss out at all. Do you currently have a website?"
@@ -71,16 +74,19 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 2. Active Listening: "Okay, yeah. That's why we're here... you said you're open to possibly updating if anything?"
 3. Local Emphasis: "That's why we're here, because we're just trying to keep everything local here in [Location]. What kind of business do you run?"
 
-## OBJECTION HANDLING (8 scripts)
+## OBJECTION HANDLING (9 scripts)
 1. Have One/Busy [ID: obj-busy-or-have]: "You already got one though, or just busy right now to talk about it?"
    → USE WHEN: Customer says "We already have a website" or "I already have one" or "Not right now" or "Not at the moment"
    → DO NOT use when customer says "Not interested" or "I don't need a website" — see Respect Decline script below
-2. SEO Pivot: "That's great because we also optimize websites as well, especially with SEO, at super affordable costs."
-3. SEO Affirmation: "Yeah, that's great that you already have one because we also optimize websites as well, especially with SEO."
-4. Revamp Pivot: "Yeah, that's great that you already have a website because we also optimize or revamp them, especially with SEO."
-5. Digital Marketing Pivot: "Of course yeah. I was just about to say though [Name], we're a whole digital marketing company... and we can help you host, maintain or optimize it, especially with SEO."
-6. IP/Control Assurance: "Of course yeah. We definitely let our clienteles get full control of their own website. We believe in having it to all yourself and for your business."
-7. Respect Decline: "No problem. I do appreciate you taking my call. Have a great day."
+2. SEO Pivot: "That's great because we also optimize websites as well, especially with SEO, at super affordable costs. Would you mind if my partner Bob gives you a quick call to go over what we can do?"
+   → USE WHEN: Customer says they HAVE a website (positive tone). NOT when they describe a problem — use SEO Problem Empathy instead.
+3. SEO Affirmation: "Yeah, that's great that you already have one because we also optimize websites as well, especially with SEO. Would you mind if my partner Bob gives you a quick call later?"
+4. SEO Problem Empathy: "Oh, I hear you — SEO can be tricky. That's actually what we specialize in. Would you mind if my partner Bob gives you a quick call to walk you through some options?"
+   → USE WHEN: Customer says their website has PROBLEMS (SEO, ranking, traffic). Empathize first — NEVER say "that's great" about a problem.
+5. Revamp Pivot: "Yeah, that's great that you already have a website because we also optimize or revamp them, especially with SEO. Would you mind if my partner Bob gives you a quick call later?"
+6. Digital Marketing Pivot: "Of course yeah. I was just about to say though [Name], we're a whole digital marketing company... and we can help you host, maintain or optimize it, especially with SEO. Would it be okay if my partner Bob gives you a quick call?"
+7. IP/Control Assurance: "Of course yeah. We definitely let our clienteles get full control of their own website. We believe in having it to all yourself and for your business. Would you mind if my partner Bob gives you a quick call to walk you through how that works?"
+8. Respect Decline: "No problem. I do appreciate you taking my call. Have a great day."
    → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.
 
 ## CLOSING (11 scripts)
@@ -161,6 +167,10 @@ WRONG OUTPUT (DO NOT DO THIS):
 [SCRIPT]: "Would you mind if I can have Bob or his partner give you a quick call later?" Rationale: ...
 [SCRIPT]: "Would you mind if I can have Bob or his partner give you a quick call later?" The script is perfectly aligned...
 
+⚠️ NAMES: Only people are the agent and Bob. NEVER invent names like "Sparkler".
+⚠️ INTRO: If agent already said "This is [Name]" or "My name is [Name]" in the transcript → intro is DONE. Do NOT suggest any intro script.
+⚠️ TONE: If customer describes a PROBLEM → empathize first. NEVER say "that's great" about a problem.
+
 CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
 1. Customer is AI assistant/receptionist/voicemail (says "I'm here to help", "How can I assist you", "I'm Delta's AI", "Leave a message", "Press 1 for", "I can arrange someone", "I can have someone return your call", robotic/scripted responses) →
    - If the AI receptionist OFFERS to arrange a callback from their team ("Can I get your number?", "I can have someone call you back") → ACCEPT IT. Give Bob's number. Say: "Yes, that would be great. You can have them call Bob at [Bob's number]. He's the best person to talk to about the website."
@@ -172,22 +182,23 @@ CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
    - OR the customer proactively says: "have Bob call me", "call me back", "they can call me", "have them call"
    - ⚠️ A casual "yeah" or "okay" at the START of a call (e.g. "yeah I have a minute") is NOT callback agreement — it's just the customer being polite. Only count it as agreement if it's clearly in response to a callback ask.
    → When truly agreed: switch to CONVERSION. Collect details. NEVER re-pitch.
-3. ⚠️ Customer is FRUSTRATED or says agent is repeating/not answering ("you're going in circles", "you keep saying the same thing", "you already said that", "I already told you", "I'm done", "you're not listening", "not answering my question", "dancin' around", "runaround", "you didn't answer", "straight answer", "level with me") → STOP everything. Do NOT repeat any previous script. Say something like: "I hear you, Ray, and I apologize for that." Then pivot DIRECTLY to Ask Callback. If customer is ALSO asking a question → briefly acknowledge it and redirect to Bob.
+   → ⚠️ If customer also gave a TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best number to reach you at?" Do NOT ignore the time they gave.
+3. ⚠️ Customer is FRUSTRATEDor says agent is repeating/not answering ("you're going in circles", "you keep saying the same thing", "you already said that", "I already told you", "I'm done", "you're not listening", "not answering my question", "dancin' around", "runaround", "you didn't answer", "straight answer", "level with me") → STOP everything. Do NOT repeat any previous script. Say something like: "I hear you, Ray, and I apologize for that." Then pivot DIRECTLY to Ask Callback. If customer is ALSO asking a question → briefly acknowledge it and redirect to Bob.
 4. Customer asks about PRICING, COST, or TIMELINE → Always redirect to Bob in ONE smooth sentence that flows into the callback ask: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?" Do NOT give specific pricing numbers — that's Bob's job. If customer pushes again: "I totally understand. Bob handles all the pricing and he'll be straight with you — would it work if he calls you today?"
 5. Customer asks about specific FEATURES or CAPABILITIES ("can you do online booking?", "does it sync with Instagram?", "can you add a form?") → Acknowledge briefly, then smoothly transition into the callback ask in ONE natural sentence: "Definitely, my partner Bob can show you exactly how that works — would you mind if he gives you a quick call later today? Does that sound good?"
 6. Customer CONFUSES the call with someone else ("is this about my order?", "are you the delivery guy?", "is this the supplier?", mistakes the agent for someone else) → Do NOT hang up or say wrong number. Politely CORRECT them and re-introduce: "Oh no, this isn't about that — this is Caesar from Simple.Biz. We're local website designers. Do you have a quick minute?" Then continue normally.
-7. Customer asks "Who is this?" or "Who are you?" → USE: Basic Intro [ID: intro-basic]
-7. Customer says "Tell me about it", "Go ahead", "Sure, what is it?", "I'm listening", or gives an OPEN INVITATION early in the call → First introduce yourself briefly if not done yet ("My partner Bob and I are local website designers here in [Location]."), THEN ask an engagement question ("What kind of business do you run, if you don't mind me asking?"). Do NOT jump straight to a question without introducing yourself first — that's disrespectful.
-8. Customer asks "What do you need?" or "I'm busy" or "What is this about?" → USE: Affordable Hook [ID: hook-affordable]
-9. Customer says "We already have a website" or "I already have one" → USE: Have One/Busy [ID: obj-busy-or-have]
-10. Customer says "I'm not interested", "I don't need a website", "No thanks" → USE: Respect Decline ("No problem. I do appreciate you taking my call. Have a great day.") — Do NOT push back. Respect their decision and end the call politely.
-11. After agent delivered pitch AND handled objections AND customer has NOT yet agreed → USE: Ask Callback [ID: ask-callback]
-12. Customer asks about ownership/control → USE: IP/Control Assurance — but ONLY ONCE. If you already answered this, do NOT repeat it.
-13. Customer asks "what do you need from me?" or "do you need my details?" after agreeing → USE: Get Email or Confirm Name
-14. Customer asks "How'd you get my number?" or sounds suspicious → USE: How'd You Get My Number or Skeptical/Scam Concern
-15. Customer says "I'm not the right person" or "Talk to someone else" → USE: Not The Right Person
-16. Customer says "Just send me an email" or "Send me info" → USE: Email Deflection — get their email AND pivot to callback
-17. Customer gives a DRY, SHORT, or VAGUE response ("yeah", "okay", "I don't know", "maybe", "hmm", "I guess", "not sure", one-word answers) → USE: An ENGAGEMENT script. Pick the one most relevant to the conversation context.
+7. Customer asks "Who is this?" or "Who are you?" → If agent already said their name (check INTRO rule above), skip intro. Otherwise USE: Basic Intro [ID: intro-basic]
+8. Customer says "Tell me about it", "Go ahead", "Sure, what is it?", "What do you wanna talk about?", "I'm listening", or gives an OPEN INVITATION early in the call → If agent already introduced themselves by name → use Bob Transition (skip name). If agent hasn't introduced AND hasn't mentioned Bob → use Quick Intro. If Bob already mentioned → ask engagement question ("What kind of business do you run, if you don't mind me asking?").
+9. Customer asks "What do you need?" or "I'm busy" or "What is this about?" → USE: Affordable Hook [ID: hook-affordable]
+10. Customer says "We already have a website" or "I already have one" → If they mention PROBLEMS (SEO, ranking, traffic, inactive) → USE: SEO Problem Empathy. If positive/neutral → USE: Have One/Busy [ID: obj-busy-or-have]
+11. Customer says "I'm not interested", "I don't need a website", "No thanks" → USE: Respect Decline ("No problem. I do appreciate you taking my call. Have a great day.") — Do NOT push back. Respect their decision and end the call politely.
+12. After agent delivered pitch AND handled objections AND customer has NOT yet agreed → USE: Ask Callback [ID: ask-callback]
+13. Customer asks about ownership/control → USE: IP/Control Assurance — but ONLY ONCE. If you already answered this, do NOT repeat it.
+14. Customer asks "what do you need from me?" or "do you need my details?" after agreeing → USE: Get Email or Confirm Name
+15. Customer asks "How'd you get my number?" or sounds suspicious → USE: How'd You Get My Number or Skeptical/Scam Concern
+16. Customer says "I'm not the right person" or "Talk to someone else" → USE: Not The Right Person
+17. Customer says "Just send me an email" or "Send me info" → USE: Email Deflection — get their email AND pivot to callback
+18. Customer gives a DRY, SHORT, or VAGUE response ("yeah", "okay", "I don't know", "maybe", "hmm", "I guess", "not sure", one-word answers) → USE: An ENGAGEMENT script. Pick the one most relevant to the conversation context.
 
 CRITICAL - AI ASSISTANT / RECEPTIONIST DETECTION:
 - Signs of AI/receptionist: "I'm here to help", "How can I assist you", "I can arrange someone", "I can have someone return your call", "Could you provide your number", robotic/scripted phrasing, asking for your callback number
@@ -275,9 +286,8 @@ GOOD (redirect to Bob):
 export async function generateAITip(request: AITipRequest): Promise<AITipResponse> {
   const startTime = Date.now();
 
-  // Performance optimization: Use Haiku for 80% of cases (stages 1-3)
-  const useHaiku = request.transcriptCount ? request.transcriptCount < 15 : true;
-  const model = useHaiku ? HAIKU_MODEL : SONNET_MODEL;
+  // Always use Haiku — fast, cheap, and handles our prompt well
+  const model = HAIKU_MODEL;
 
   try {
     // Ultra-compressed user prompt
@@ -286,7 +296,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     const anthropic = await getAnthropicClient();
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 150, // Single script - reduced tokens
+      max_tokens: 250, // Increased for complex scripts with callback asks
       temperature: 0.3, // Lower for consistency and speed
       system: [
         {
@@ -342,11 +352,11 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
       console.warn(`[Claude] CACHE WARNING: ${(cacheHitRate * 100).toFixed(1)}% below target ${CACHE_HIT_TARGET * 100}%`);
     }
 
-    console.log(`[Claude] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: ${useHaiku ? 'Haiku' : 'Sonnet'}`);
+    console.log(`[Claude] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: Haiku`);
 
     return {
       ...parsed,
-      model: useHaiku ? 'haiku' : 'sonnet',
+      model: 'haiku',
       latency,
       cacheHitRate,
       tokenMetrics: {
@@ -388,7 +398,7 @@ function buildCompressedPrompt(request: AITipRequest): string {
   // Include recent conversation (last 10-15 messages with speaker labels)
   // This gives Claude proper context to understand the conversation flow
   if (request.recentTranscript) {
-    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1200)}`);
+    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 2400)}`);
   }
 
   // Include summary for additional context
@@ -476,7 +486,7 @@ function getFallbackSuggestion(stage: string, latency: number): AITipResponse {
     objection: {
       heading: 'Handle Objection',
       stage: 'OBJECTION_HANDLING',
-      suggestion: "Oh okay. I mean, that's great because we also optimize websites as well, especially with SEO, at super affordable costs."
+      suggestion: "Would you mind if my partner Bob gives you a quick call later to talk about what we can do for your website?"
     },
     closing: {
       heading: 'Ask Callback',

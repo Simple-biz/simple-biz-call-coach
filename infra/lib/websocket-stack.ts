@@ -47,7 +47,7 @@ export class WebSocketStack extends cdk.Stack {
       DATABASE_URL: props.rdsConnectionString,
       API_KEYS_SECRET_ARN: apiKeysSecret.secretArn,
       CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
-      CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20251001',
+      CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20250929',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 
