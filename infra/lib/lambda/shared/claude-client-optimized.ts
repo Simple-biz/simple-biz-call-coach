@@ -296,7 +296,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     const anthropic = await getAnthropicClient();
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 250, // Increased for complex scripts with callback asks
+      max_tokens: 150, // Tips are ~50-80 tokens; lower = faster generation
       temperature: 0.3, // Lower for consistency and speed
       system: [
         {
@@ -398,7 +398,7 @@ function buildCompressedPrompt(request: AITipRequest): string {
   // Include recent conversation (last 10-15 messages with speaker labels)
   // This gives Claude proper context to understand the conversation flow
   if (request.recentTranscript) {
-    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 2400)}`);
+    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1800)}`);
   }
 
   // Include summary for additional context

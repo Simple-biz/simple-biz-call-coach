@@ -174,7 +174,7 @@ export const handler = async (
       }
 
       // Get most recent transcripts for AI context (DESC order → slice(0, N) then reverse for chronological)
-      const contextWindow = 25;
+      const contextWindow = 15;
       const recentTranscripts = transcripts.slice(0, contextWindow).reverse();
       const conversationContext = recentTranscripts
         .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)

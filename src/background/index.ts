@@ -96,39 +96,65 @@ let extensionState: ExtensionState = {
 // Keep-alive mechanism
 let keepAliveInterval: number | null = null
 
-// 3-Second Auto-Analysis Loop (DISABLED - manual suggestions only)
+// ============================================================================
+// TIP PRE-FETCH SYSTEM — generates tips in background for instant delivery
+// ============================================================================
+let prefetchedTip: any = null;
+let prefetchTimestamp: number = 0;
+let isPrefetchInFlight: boolean = false;
+let isUserRequest: boolean = false;
+let prefetchDebounceTimer: any = null;
+const PREFETCH_INTERVAL_MS = 5000;
+const PREFETCH_MAX_AGE_MS = 15000;
+const PREFETCH_DEBOUNCE_MS = 500;
+
+function triggerPrefetch() {
+  if (isPrefetchInFlight) return;
+  if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
+  if (!extensionState.conversationId) return;
+
+  const recentTranscripts = extensionState.transcriptions.slice(-5);
+  if (recentTranscripts.length === 0) return;
+  const lastTx = recentTranscripts[recentTranscripts.length - 1];
+  if (Date.now() - lastTx.timestamp > 15000) return;
+
+  isPrefetchInFlight = true;
+  isUserRequest = false;
+  console.log('🔮 [Prefetch] Generating tip in background...');
+  awsWebSocketService.getIntelligence(extensionState.conversationId, false);
+}
+
+function invalidateAndPrefetch() {
+  prefetchedTip = null;
+  if (prefetchDebounceTimer) clearTimeout(prefetchDebounceTimer);
+  prefetchDebounceTimer = setTimeout(() => triggerPrefetch(), PREFETCH_DEBOUNCE_MS);
+}
+
+function clearPrefetchState() {
+  prefetchedTip = null;
+  prefetchTimestamp = 0;
+  isPrefetchInFlight = false;
+  isUserRequest = false;
+  if (prefetchDebounceTimer) clearTimeout(prefetchDebounceTimer);
+}
+
 let autoAnalysisInterval: any = null;
 
 function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
-  console.log('🔄 [Background] Starting 10-second Auto-Analysis Loop');
+  clearPrefetchState();
+  console.log('🔄 [Background] Starting 5-second prefetch loop');
 
-  autoAnalysisInterval = setInterval(() => {
-     if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
-
-     // Only trigger if we have recent transcripts (last 10s)
-     const recentTranscripts = extensionState.transcriptions.slice(-5);
-     if (recentTranscripts.length === 0) return;
-     const lastTx = recentTranscripts[recentTranscripts.length - 1];
-     if (Date.now() - lastTx.timestamp > 10000) return; // No recent activity
-
-     const conversationId = extensionState.conversationId;
-     if (conversationId) {
-        // Trigger intelligence update only (no tip generation — tips are manual)
-        awsWebSocketService.getIntelligence(conversationId);
-     }
-  }, 10000
-
-
-);
+  autoAnalysisInterval = setInterval(() => triggerPrefetch(), PREFETCH_INTERVAL_MS);
 }
 
 function stopAutoAnalysisLoop() {
   if (autoAnalysisInterval) {
     clearInterval(autoAnalysisInterval);
     autoAnalysisInterval = null;
-    console.log('🛑 [Background] Stopped Auto-Analysis Loop');
+    console.log('🛑 [Background] Stopped prefetch loop');
   }
+  clearPrefetchState();
 }
 
 // ============================================================================
@@ -756,6 +782,9 @@ async function processMessage(message: any, sender: any) {
             message.isFinal
           )
           console.log(`🤖 [Background] Forwarded ${message.speaker} transcript to AI Backend`)
+
+          // Invalidate cached tip and prefetch a fresh one
+          invalidateAndPrefetch();
         } catch (error) {
           console.error('❌ [Background] Error forwarding transcript to Backend:', error)
         }
@@ -847,7 +876,7 @@ async function processMessage(message: any, sender: any) {
 
       // Legacy handler - suppressed warning for demo
       case 'REQUEST_NEXT_TIP':
-        console.log('🔄 [Background] Request next tip - triggering intelligence update');
+        console.log('🔄 [Background] Request next tip');
 
         if (!awsWebSocketService.isConnected()) {
           console.error('❌ [Background] Cannot request tip - WebSocket not connected');
@@ -859,13 +888,32 @@ async function processMessage(message: any, sender: any) {
           return { success: false, error: 'No active conversation' };
         }
 
+        // Serve prefetched tip instantly if available and fresh
+        if (prefetchedTip && (Date.now() - prefetchTimestamp) < PREFETCH_MAX_AGE_MS) {
+          console.log('⚡ [Prefetch] Serving cached tip INSTANTLY');
+          broadcastToUI({
+            type: 'AI_TIP',
+            payload: prefetchedTip
+          });
+          prefetchedTip = null;
+          prefetchTimestamp = 0;
+          // Immediately prefetch the next tip
+          isPrefetchInFlight = false;
+          triggerPrefetch();
+          return { success: true, message: 'Instant tip served!' };
+        }
+
+        // No cached tip — fall back to live request
         try {
-          // Trigger intelligence + AI tip generation (skipTip=false for manual request)
+          console.log('⏳ [Prefetch] No cached tip, requesting from Lambda...');
+          isUserRequest = true;
+          isPrefetchInFlight = true;
           await awsWebSocketService.getIntelligence(extensionState.conversationId, false);
-          console.log('✅ [Background] Intelligence update requested');
           return { success: true, message: 'Generating next suggestion...' };
         } catch (error: any) {
           console.error('❌ [Background] Failed to request intelligence:', error);
+          isPrefetchInFlight = false;
+          isUserRequest = false;
           return { success: false, error: error.message };
         }
 
@@ -1009,25 +1057,32 @@ async function connectAIBackend() {
     })
 
     awsWebSocketService.setAITipListener((tip) => {
-      console.log('💡 [Background] AI Tip received:', tip)
-
-      // Convert AIRecommendation format to sidepanel payload format
-      // Extract first option as the suggestion (single suggestion system)
       const suggestion = tip.options && tip.options.length > 0
         ? tip.options[0].script
         : '';
 
-      broadcastToUI({
-        type: 'AI_TIP',
-        payload: {
-          heading: tip.heading,
-          stage: tip.stage,
-          context: tip.context,
-          suggestion: suggestion,
-          recommendationId: tip.recommendationId,
-          timestamp: tip.timestamp
-        }
-      })
+      const tipPayload = {
+        heading: tip.heading,
+        stage: tip.stage,
+        context: tip.context,
+        suggestion: suggestion,
+        recommendationId: tip.recommendationId,
+        timestamp: tip.timestamp
+      };
+
+      isPrefetchInFlight = false;
+
+      if (isUserRequest) {
+        // Manual request — broadcast to UI immediately
+        console.log('💡 [Background] AI Tip received (manual) — broadcasting');
+        isUserRequest = false;
+        broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
+      } else {
+        // Prefetch — store silently for instant delivery on next click
+        console.log('🔮 [Prefetch] Tip cached silently');
+        prefetchedTip = tipPayload;
+        prefetchTimestamp = Date.now();
+      }
     })
 
     awsWebSocketService.setIntelligenceListener((payload) => {
