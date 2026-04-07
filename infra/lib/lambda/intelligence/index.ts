@@ -3,7 +3,8 @@ import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConnection } from '../shared/dynamo-client';
 import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
 import { generateConversationIntelligence } from '../shared/intelligence-client';
-import { generateAITip } from '../shared/claude-client-optimized';
+import { generateAITip, generateAITipStreaming } from '../shared/claude-client-optimized';
+import { sendToConnection } from '../shared/apigw-client';
 import { getCachedIntelligence, setCachedIntelligence } from './cache';
 
 // Track previous AI suggestions per conversation (Lambda memory — resets on cold start)
@@ -25,6 +26,8 @@ export const handler = async (
   console.log('[Intelligence] Event:', JSON.stringify(event));
 
   const connectionId = event.requestContext.connectionId!;
+  const domain = event.requestContext.domainName!;
+  const stage = event.requestContext.stage!;
 
   try {
     // Get connection info
@@ -184,7 +187,8 @@ export const handler = async (
       const prevSuggestions = previousSuggestionsCache[conversationId] || [];
 
       const aiTipStartTime = Date.now();
-      const aiTip = await generateAITip({
+      let isFirstChunk = true;
+      const aiTip = await generateAITipStreaming({
         conversationId,
         callStage,
         recentTranscript: conversationContext,
@@ -197,6 +201,16 @@ export const handler = async (
           phoneNumber: (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0,
           email: (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0,
         },
+      }, async (delta: string) => {
+        // Push each text chunk to client via WebSocket
+        await sendToConnection(connectionId, {
+          type: 'TIP_CHUNK',
+          payload: {
+            delta,
+            ...(isFirstChunk ? { heading: 'Generating...', stage: callStage } : {}),
+          }
+        }, domain, stage);
+        isFirstChunk = false;
       });
       const aiTipLatency = Date.now() - aiTipStartTime;
 

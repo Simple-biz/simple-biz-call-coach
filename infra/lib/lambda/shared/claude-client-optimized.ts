@@ -375,6 +375,88 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
 }
 
 // ============================================================================
+// STREAMING CLAUDE API CALL — pushes text chunks via callback
+// ============================================================================
+
+export async function generateAITipStreaming(
+  request: AITipRequest,
+  onChunk: (delta: string) => Promise<void>
+): Promise<AITipResponse> {
+  const startTime = Date.now();
+  const model = HAIKU_MODEL;
+
+  try {
+    const userPrompt = buildCompressedPrompt(request);
+    const anthropic = await getAnthropicClient();
+
+    let fullText = '';
+
+    const stream = anthropic.messages.stream({
+      model,
+      max_tokens: 150,
+      temperature: 0.3,
+      system: [
+        {
+          type: 'text' as const,
+          text: SYSTEM_PROMPT_COMPRESSED,
+          cache_control: { type: 'ephemeral' as const }
+        },
+        {
+          type: 'text' as const,
+          text: MARKS_GOLDEN_SCRIPTS,
+          cache_control: { type: 'ephemeral' as const }
+        }
+      ],
+      messages: [
+        { role: 'user' as const, content: userPrompt }
+      ]
+    });
+
+    stream.on('text', async (text) => {
+      fullText += text;
+      try {
+        await onChunk(text);
+      } catch (err) {
+        console.error('[Claude Stream] Error sending chunk:', err);
+      }
+    });
+
+    const finalMessage = await stream.finalMessage();
+
+    const latency = Date.now() - startTime;
+
+    console.log('[Claude Stream] Full Response:');
+    console.log('=====================================');
+    console.log(fullText);
+    console.log('=====================================');
+
+    const cachedTokens = finalMessage.usage.cache_read_input_tokens || 0;
+    const totalInputTokens = finalMessage.usage.input_tokens + cachedTokens;
+    const cacheHitRate = totalInputTokens > 0 ? cachedTokens / totalInputTokens : 0;
+
+    const parsed = parseAITipResponse(fullText, request.callStage);
+
+    console.log(`[Claude Stream] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: Haiku`);
+
+    return {
+      ...parsed,
+      model: 'haiku',
+      latency,
+      cacheHitRate,
+      tokenMetrics: {
+        cached: cachedTokens,
+        input: finalMessage.usage.input_tokens,
+        output: finalMessage.usage.output_tokens
+      }
+    };
+
+  } catch (error: any) {
+    console.error('[Claude Stream] API Error:', error);
+    return getFallbackSuggestion(request.callStage, Date.now() - startTime);
+  }
+}
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 

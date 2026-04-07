@@ -39,6 +39,9 @@ interface CallStore {
   // Script Options field (for GreetingsSelector)
   currentScriptOptions: ScriptOption[];
 
+  // Streaming tip state (progressive rendering)
+  streamingTip: { heading?: string; stage?: string; text: string } | null;
+
   // Actions
   startCall: () => void;
   endCall: () => void;
@@ -69,6 +72,10 @@ interface CallStore {
   requestNextSuggestion: (currentOption: ScriptOption) => void;
   refreshContext: () => void;
   setCurrentScriptOptions: (options: ScriptOption[]) => void;
+
+  // Streaming tip actions
+  appendStreamingChunk: (delta: string, heading?: string, stage?: string) => void;
+  clearStreamingTip: () => void;
 }
 
 // Shape of state persisted to chrome.storage.local under "callStoreState"
@@ -119,6 +126,9 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   // Script Options initial state
   currentScriptOptions: [],
+
+  // Streaming tip initial state
+  streamingTip: null,
 
   startCall: () => {
     const newState = {
@@ -365,6 +375,29 @@ export const useCallStore = create<CallStore>((set, get) => ({
     set({ currentScriptOptions: options });
     console.log(`📝 [Store] Updated script options: ${options.length} options`);
     persistState(get());
+  },
+
+  appendStreamingChunk: (delta, heading, stage) => {
+    set((state) => {
+      const current = state.streamingTip;
+      if (current) {
+        return {
+          streamingTip: {
+            ...current,
+            text: current.text + delta,
+            ...(heading ? { heading } : {}),
+            ...(stage ? { stage } : {}),
+          }
+        };
+      }
+      return {
+        streamingTip: { text: delta, heading, stage }
+      };
+    });
+  },
+
+  clearStreamingTip: () => {
+    set({ streamingTip: null });
   },
 }));
 

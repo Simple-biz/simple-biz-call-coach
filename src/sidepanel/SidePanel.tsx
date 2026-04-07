@@ -212,14 +212,40 @@ export default function SidePanel() {
           console.log("💡 [SidePanel] Added coaching tip:", newTip.type);
           break;
 
+        case "TIP_CHUNK":
+          // Streaming: accumulate text chunks for progressive rendering
+          if (message.payload) {
+            useCallStore.getState().appendStreamingChunk(
+              message.payload.delta || '',
+              message.payload.heading,
+              message.payload.stage
+            );
+            // Update GreetingsSelector with partial text as it streams
+            const streamingState = useCallStore.getState().streamingTip;
+            if (streamingState) {
+              const partialOption: ScriptOption = {
+                id: `streaming-tip-${Date.now()}`,
+                type: 'suggestion',
+                label: streamingState.heading || 'Generating...',
+                script: streamingState.text,
+                icon: 'zap'
+              };
+              useCallStore.getState().setCurrentScriptOptions([partialOption]);
+            }
+          }
+          break;
+
         case "AI_TIP":
-          // NEW: Handle single AI suggestion from AWS Lambda
+          // Final complete tip from Lambda — finalize display
           console.log("🤖 [SidePanel] AI_TIP received:", message.payload);
 
           if (!message.payload) {
             console.error("❌ [SidePanel] AI_TIP message missing payload");
             break;
           }
+
+          // Clear streaming state
+          useCallStore.getState().clearStreamingTip();
 
           const aiTip: CoachingTip = {
             id: (message.payload.timestamp)?.toString() || Date.now().toString(),
@@ -231,7 +257,7 @@ export default function SidePanel() {
           useCallStore.getState().addCoachingTip(aiTip);
           console.log(`💡 [SidePanel] Added AI suggestion: "${message.payload.suggestion || 'empty'}"`);
 
-          // ✅ UPDATE: Also update currentScriptOptions for GreetingsSelector display
+          // Update GreetingsSelector with final complete suggestion
           const scriptOption: ScriptOption = {
             id: `ai-tip-${message.payload.recommendationId || Date.now()}`,
             type: 'suggestion',
@@ -240,7 +266,7 @@ export default function SidePanel() {
             icon: 'zap'
           };
           useCallStore.getState().setCurrentScriptOptions([scriptOption]);
-          console.log(`✅ [SidePanel] Updated GreetingsSelector with new suggestion: "${message.payload.heading}"`);
+          console.log(`✅ [SidePanel] Updated GreetingsSelector with final suggestion: "${message.payload.heading}"`);
           break;
 
         case "AI_COACHING_TIP":

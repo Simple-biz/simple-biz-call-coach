@@ -56,6 +56,7 @@ export class AWSWebSocketService {
   private intelligenceListener: ((data: IntelligenceUpdatePayload) => void) | null = null;
   private errorListener: ((error: { code: string; message: string }) => void) | null = null;
   private statusUpdateListener: ((payload: WebhookStatusUpdatePayload) => void) | null = null;
+  private tipChunkListener: ((delta: string, heading?: string, stage?: string) => void) | null = null;
 
   constructor() {
     console.log('🚀 [AWSWebSocket] Service initialized');
@@ -94,6 +95,13 @@ export class AWSWebSocketService {
    */
   setStatusUpdateListener(listener: (payload: WebhookStatusUpdatePayload) => void): void {
     this.statusUpdateListener = listener;
+  }
+
+  /**
+   * Set TIP_CHUNK listener (streaming tip deltas)
+   */
+  setTipChunkListener(listener: (delta: string, heading?: string, stage?: string) => void): void {
+    this.tipChunkListener = listener;
   }
 
   /**
@@ -379,6 +387,16 @@ export class AWSWebSocketService {
             this.conversationStartRejecter(new Error('No conversation ID received'));
             this.conversationStartResolver = null;
             this.conversationStartRejecter = null;
+          }
+          break;
+
+        case 'TIP_CHUNK':
+          if (data.payload && this.tipChunkListener) {
+            this.tipChunkListener(
+              data.payload.delta || '',
+              data.payload.heading,
+              data.payload.stage
+            );
           }
           break;
 
