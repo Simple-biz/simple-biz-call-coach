@@ -104,8 +104,6 @@ let prefetchTimestamp: number = 0;
 let isPrefetchInFlight: boolean = false;
 let isUserRequest: boolean = false;
 let prefetchDebounceTimer: any = null;
-// When true, the in-flight prefetch response is stale and should be discarded
-let needsFreshPrefetch: boolean = false;
 const PREFETCH_INTERVAL_MS = 5000;
 const PREFETCH_MAX_AGE_MS = 15000;
 const PREFETCH_DEBOUNCE_MS = 500;
@@ -122,22 +120,17 @@ function triggerPrefetch() {
 
   isPrefetchInFlight = true;
   isUserRequest = false;
-  needsFreshPrefetch = false;
   console.log('🔮 [Prefetch] Generating tip in background...');
   awsWebSocketService.getIntelligence(extensionState.conversationId, false);
 }
 
 function invalidateAndPrefetch() {
   prefetchedTip = null;
-  if (isPrefetchInFlight) {
-    // Mark in-flight response as stale — it will be discarded when it arrives,
-    // then a fresh prefetch triggers immediately
-    needsFreshPrefetch = true;
-    console.log('🗑️ [Prefetch] In-flight tip marked stale, will re-prefetch on arrival');
-  } else {
-    if (prefetchDebounceTimer) clearTimeout(prefetchDebounceTimer);
-    prefetchDebounceTimer = setTimeout(() => triggerPrefetch(), PREFETCH_DEBOUNCE_MS);
-  }
+  // Allow fresh prefetch to start immediately — don't wait for stale in-flight response.
+  // If a stale response arrives, it'll be briefly cached then overwritten by the fresh one.
+  isPrefetchInFlight = false;
+  if (prefetchDebounceTimer) clearTimeout(prefetchDebounceTimer);
+  prefetchDebounceTimer = setTimeout(() => triggerPrefetch(), PREFETCH_DEBOUNCE_MS);
 }
 
 function clearPrefetchState() {
@@ -145,7 +138,6 @@ function clearPrefetchState() {
   prefetchTimestamp = 0;
   isPrefetchInFlight = false;
   isUserRequest = false;
-  needsFreshPrefetch = false;
   if (prefetchDebounceTimer) clearTimeout(prefetchDebounceTimer);
 }
 
@@ -1088,13 +1080,9 @@ async function connectAIBackend() {
         console.log('💡 [Background] AI Tip received (manual) — broadcasting');
         isUserRequest = false;
         broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
-      } else if (needsFreshPrefetch) {
-        // Stale response — conversation changed while this was in-flight. Discard and re-prefetch.
-        console.log('🗑️ [Prefetch] Discarding stale tip, triggering fresh prefetch...');
-        needsFreshPrefetch = false;
-        triggerPrefetch();
       } else {
         // Prefetch — store silently for instant delivery on next click
+        // (If stale, the fresh response will overwrite shortly after)
         console.log('🔮 [Prefetch] Tip cached silently');
         prefetchedTip = tipPayload;
         prefetchTimestamp = Date.now();
