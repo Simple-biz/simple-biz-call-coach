@@ -412,14 +412,18 @@ export async function generateAITipStreaming(
       ]
     });
 
-    stream.on('text', async (text) => {
-      fullText += text;
-      try {
-        await onChunk(text);
-      } catch (err) {
-        console.error('[Claude Stream] Error sending chunk:', err);
+    // Use for-await to properly handle async onChunk (sendToConnection)
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        const text = event.delta.text;
+        fullText += text;
+        try {
+          await onChunk(text);
+        } catch (err) {
+          console.error('[Claude Stream] Error sending chunk:', err);
+        }
       }
-    });
+    }
 
     const finalMessage = await stream.finalMessage();
 
