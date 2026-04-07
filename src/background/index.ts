@@ -93,6 +93,22 @@ let extensionState: ExtensionState = {
   callDetectionSource: null,
 }
 
+// Restore coachingPending from storage on service worker wake-up
+// (onStartup only fires on browser launch, not SW restarts after idle kill)
+chrome.storage.local.get(['coachingPending', 'userEmail', 'isAuthenticated']).then((data: Record<string, any>) => {
+  if (data.coachingPending) {
+    extensionState.coachingPending = true
+    console.log('🔄 [Background] Restored coachingPending=true from storage')
+  }
+  if (data.userEmail) {
+    extensionState.userEmail = data.userEmail
+    extensionState.isAuthenticated = data.isAuthenticated || false
+    console.log('✅ [Background] Restored user session:', data.userEmail)
+  }
+}).catch(err => {
+  console.error('❌ [Background] Failed to restore state from storage:', err)
+})
+
 // Keep-alive mechanism
 let keepAliveInterval: number | null = null
 
@@ -230,7 +246,17 @@ chrome.runtime.onConnect.addListener(port => {
         console.log(`✅ [Background] Call state updated (Tab: ${tabId})`)
 
         // Auto-start capture if coaching was armed before the call
-        if (extensionState.coachingPending && tabId) {
+        // Fallback: check storage in case SW restarted and module-level restore hasn't completed
+        let shouldStartCoaching = extensionState.coachingPending
+        if (!shouldStartCoaching && tabId) {
+          const stored = await chrome.storage.local.get('coachingPending')
+          shouldStartCoaching = stored.coachingPending === true
+          if (shouldStartCoaching) {
+            extensionState.coachingPending = true
+            console.log('🔄 [Background] Restored coachingPending from storage (fallback)')
+          }
+        }
+        if (shouldStartCoaching && tabId) {
           console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
           await startCaptureAndCoaching(tabId)
         }
@@ -264,8 +290,9 @@ chrome.runtime.onConnect.addListener(port => {
 
 // Helper to broadcast messages to all UI components
 function broadcastToUI(message: object): void {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // UI might not be open, that's okay
+  chrome.runtime.sendMessage(message).catch((err) => {
+    // Log for debugging — UI might not be open, that's usually okay
+    console.warn(`⚠️ [Background] broadcastToUI failed for ${(message as any).type}:`, err?.message || err)
   })
 }
 
@@ -328,6 +355,7 @@ async function updateExtensionState(
       callState: extensionState.isOnCall ? 'active' : 'inactive',
       isOnCall: extensionState.isOnCall,
       isRecording: extensionState.isRecording,
+      coachingPending: extensionState.coachingPending || false,
 
       // Legacy support
       callStoreState: {
@@ -424,17 +452,7 @@ chrome.runtime.onInstalled.addListener(async details => {
 chrome.runtime.onStartup.addListener(() => {
   console.log('🔄 [Background] Startup - initializing')
   startKeepAlive()
-
-  // Restore state from storage
-  chrome.storage.local.get(['userEmail', 'isAuthenticated']).then((data: { userEmail?: string; isAuthenticated?: boolean }) => {
-    if (data.userEmail) {
-      extensionState.userEmail = data.userEmail
-      extensionState.isAuthenticated = data.isAuthenticated || false
-      console.log('✅ [Background] User session restored:', data.userEmail)
-    }
-  }).catch(error => {
-    console.error('❌ [Background] Failed to restore session:', error)
-  })
+  // State restoration is handled at module level (runs on every SW wake-up)
 })
 
 // Listen for settings changes
@@ -547,7 +565,17 @@ async function processMessage(message: any, sender: any) {
       console.log(`✅ [Background] New call initialized with clean state (Tab: ${callTabId})`)
 
       // Auto-start capture if coaching was armed before the call
-      if (extensionState.coachingPending && callTabId) {
+      // Fallback: check storage in case SW restarted and module-level restore hasn't completed
+      let shouldStartCoachingMsg = extensionState.coachingPending
+      if (!shouldStartCoachingMsg && callTabId) {
+        const stored = await chrome.storage.local.get('coachingPending')
+        shouldStartCoachingMsg = stored.coachingPending === true
+        if (shouldStartCoachingMsg) {
+          extensionState.coachingPending = true
+          console.log('🔄 [Background] Restored coachingPending from storage (fallback)')
+        }
+      }
+      if (shouldStartCoachingMsg && callTabId) {
         console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
         await startCaptureAndCoaching(callTabId)
       }
@@ -838,7 +866,11 @@ async function processMessage(message: any, sender: any) {
 
       // Legacy handler - suppressed warning for demo
       case 'REQUEST_NEXT_TIP':
-        console.log('🔄 [Background] Request next tip (streaming)');
+        console.log('🔄 [Background] Request next tip (streaming)', {
+          wsConnected: awsWebSocketService.isConnected(),
+          conversationId: extensionState.conversationId,
+          isRecording: extensionState.isRecording,
+        });
 
         if (!awsWebSocketService.isConnected()) {
           console.error('❌ [Background] Cannot request tip - WebSocket not connected');

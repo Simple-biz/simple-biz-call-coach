@@ -372,8 +372,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
         timestamp: Date.now()
       }
     }).then((response) => {
+      console.log("📨 [Store] REQUEST_NEXT_TIP response:", JSON.stringify(response));
+      // Background wraps results: { success: true, result: { success: false, error: '...' } }
+      // Check both outer and inner success flags
       if (response && !response.success) {
-        console.warn("⚠️ [Store] Tip request failed:", response.error);
+        console.warn("⚠️ [Store] Tip request failed (outer):", response.error);
+        set({ isGeneratingTip: false });
+      } else if (response?.result && response.result.success === false) {
+        console.warn("⚠️ [Store] Tip request failed (inner):", response.result.error);
         set({ isGeneratingTip: false });
       }
     }).catch(err => {

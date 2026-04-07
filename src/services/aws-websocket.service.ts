@@ -391,6 +391,7 @@ export class AWSWebSocketService {
           break;
 
         case 'TIP_CHUNK':
+          console.log(`🌊 [AWSWebSocket] TIP_CHUNK received: hasListener=${!!this.tipChunkListener}, delta="${(data.payload?.delta || '').substring(0, 30)}..."`);
           if (data.payload && this.tipChunkListener) {
             this.tipChunkListener(
               data.payload.delta || '',
