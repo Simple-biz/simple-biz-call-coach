@@ -352,6 +352,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
     // Show loading state immediately on button click
     set({ isGeneratingTip: true, streamingTip: null });
 
+    // Safety timeout: reset loading if no response within 15s
+    setTimeout(() => {
+      if (get().isGeneratingTip) {
+        console.warn("⏰ [Store] Tip generation timed out after 15s");
+        set({ isGeneratingTip: false });
+      }
+    }, 15000);
+
     const transcriptText = state.transcriptions.slice(-10).map(t => t.text).join(' ');
     
     // Send message to Background Worker (which holds the WebSocket)
@@ -362,6 +370,11 @@ export const useCallStore = create<CallStore>((set, get) => ({
         context: transcriptText,
         text: `[Requesting Tip] ${currentOption.label}`,
         timestamp: Date.now()
+      }
+    }).then((response) => {
+      if (response && !response.success) {
+        console.warn("⚠️ [Store] Tip request failed:", response.error);
+        set({ isGeneratingTip: false });
       }
     }).catch(err => {
         console.error("❌ [Store] Failed to request next tip via background:", err);
