@@ -118,65 +118,15 @@ let keepAliveInterval: number | null = null
 let autoAnalysisInterval: any = null;
 const AUTO_ANALYSIS_INTERVAL_MS = 10000;
 
-// ============================================================================
-// SPECULATIVE PRE-GENERATION — generate tip when customer stops talking
-// ============================================================================
-let speculativeTimer: any = null;
-const SPECULATIVE_DEBOUNCE_MS = 2000; // Wait 2s after last customer speech
-let speculativeMode: 'idle' | 'generating' | 'ready' = 'idle';
-let speculativeTipText = '';
-let speculativeTipPayload: any = null; // Final AI_TIP payload when complete
-let speculativeGenId = 0; // Incremented on each generation, used to discard stale results
-
-function triggerSpeculativeGeneration() {
-  if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
-  if (!extensionState.conversationId) return;
-  if (speculativeMode === 'generating') return; // Already generating
-
-  speculativeMode = 'generating';
-  speculativeTipText = '';
-  speculativeTipPayload = null;
-  speculativeGenId++;
-  const thisGenId = speculativeGenId;
-
-  // Build transcripts from extensionState (same format as store sends)
-  const recentTranscripts = extensionState.transcriptions
-    .filter(t => t.isFinal)
-    .slice(-20)
-    .map(t => ({
-      speaker: t.speaker === 'caller' ? 'caller' : 'agent',
-      text: t.transcript,
-    }));
-
-  console.log(`🔮 [Background] Starting speculative tip generation (gen=${thisGenId})...`);
-  awsWebSocketService.getIntelligence(
-    extensionState.conversationId!,
-    false,
-    recentTranscripts
-  ).catch(err => {
-    console.warn('⚠️ [Background] Speculative generation failed:', err);
-    if (speculativeGenId === thisGenId) {
-      speculativeMode = 'idle';
-    }
-  });
-}
-
-function invalidateSpeculativeTip() {
-  speculativeMode = 'idle';
-  speculativeTipText = '';
-  speculativeTipPayload = null;
-  if (speculativeTimer) {
-    clearTimeout(speculativeTimer);
-    speculativeTimer = null;
-  }
-}
-
-// Track whether the current generation is user-requested or speculative
-let userRequestedTip = false;
-
 function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
   console.log('🔄 [Background] Starting 10-second auto-analysis loop (intelligence only)');
+
+  // Fire first analysis immediately so cache is warm for early tip requests
+  if (awsWebSocketService.isConnected() && extensionState.isRecording && extensionState.conversationId) {
+    console.log('⚡ [Background] Running immediate first auto-analysis to warm cache');
+    awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+  }
 
   autoAnalysisInterval = setInterval(() => {
     if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
@@ -834,20 +784,6 @@ async function processMessage(message: any, sender: any) {
         } catch (error) {
           console.error('❌ [Background] Error forwarding transcript to Backend:', error)
         }
-
-        // Speculative pre-gen: when customer finishes talking, start generating a tip
-        // Debounce 2s to wait for multiple transcript fragments to settle
-        if (message.speaker === 'caller' && message.isFinal) {
-          if (speculativeTimer) clearTimeout(speculativeTimer);
-          // Invalidate any existing speculative result — new speech means stale context
-          if (speculativeMode !== 'idle') {
-            console.log(`🔮 [Background] New customer speech — invalidating speculative tip (was ${speculativeMode})`);
-            invalidateSpeculativeTip();
-          }
-          speculativeTimer = setTimeout(() => {
-            triggerSpeculativeGeneration();
-          }, SPECULATIVE_DEBOUNCE_MS);
-        }
       }
       break
 
@@ -936,10 +872,9 @@ async function processMessage(message: any, sender: any) {
 
       // Legacy handler - suppressed warning for demo
       case 'REQUEST_NEXT_TIP':
-        console.log('🔄 [Background] Request next tip', {
+        console.log('🔄 [Background] Request next tip (streaming)', {
           wsConnected: awsWebSocketService.isConnected(),
           conversationId: extensionState.conversationId,
-          speculativeMode,
         });
 
         if (!awsWebSocketService.isConnected()) {
@@ -952,44 +887,10 @@ async function processMessage(message: any, sender: any) {
           return { success: false, error: 'No active conversation' };
         }
 
-        // INSTANT PATH: If we have a speculative tip ready, serve it from cache
-        if (speculativeMode === 'ready' && speculativeTipText && speculativeTipPayload) {
-          console.log('⚡ [Background] Serving speculative tip INSTANTLY from cache');
-          // Send the full text as a single TIP_CHUNK for instant display
-          broadcastToUI({
-            type: 'TIP_CHUNK',
-            payload: {
-              delta: speculativeTipText,
-              heading: speculativeTipPayload.heading,
-              stage: speculativeTipPayload.stage,
-            }
-          });
-          // Immediately finalize with AI_TIP
-          broadcastToUI({ type: 'AI_TIP', payload: speculativeTipPayload });
-          invalidateSpeculativeTip();
-          return { success: true, message: 'Instant tip from cache' };
-        }
-
-        // IN-FLIGHT PATH: If speculative gen is in progress, promote it to user-requested
-        // so chunks start streaming to UI
-        if (speculativeMode === 'generating') {
-          console.log('🔄 [Background] Speculative gen in-flight → promoting to user-requested');
-          userRequestedTip = true;
-          // Send any chunks already cached
-          if (speculativeTipText) {
-            broadcastToUI({
-              type: 'TIP_CHUNK',
-              payload: { delta: speculativeTipText }
-            });
-          }
-          speculativeTipText = '';
-          return { success: true, message: 'Streaming tip (promoted from speculative)...' };
-        }
-
-        // FRESH PATH: No speculative tip — request from Lambda (existing behavior)
+        // Request tip from Lambda — response streams back via TIP_CHUNK messages
+        // Pass client transcripts to skip DB read in Lambda
         try {
           console.log('🌊 [Background] Requesting streaming tip from Lambda...');
-          userRequestedTip = true;
           await awsWebSocketService.getIntelligence(
             extensionState.conversationId,
             false,
@@ -998,7 +899,6 @@ async function processMessage(message: any, sender: any) {
           return { success: true, message: 'Streaming tip...' };
         } catch (error: any) {
           console.error('❌ [Background] Failed to request intelligence:', error);
-          userRequestedTip = false;
           return { success: false, error: error.message };
         }
 
@@ -1141,23 +1041,16 @@ async function connectAIBackend() {
       })
     })
 
-    // TIP_CHUNK: Forward streaming chunks to UI OR cache for speculative pre-gen
+    // TIP_CHUNK: Forward streaming chunks to UI for progressive rendering
     awsWebSocketService.setTipChunkListener((delta, heading, stage) => {
-      if (userRequestedTip) {
-        // User clicked button — stream to UI immediately
-        console.log(`🌊 [Background] Tip chunk → UI: "${delta.substring(0, 20)}..."`);
-        broadcastToUI({
-          type: 'TIP_CHUNK',
-          payload: { delta, heading, stage }
-        });
-      } else if (speculativeMode === 'generating') {
-        // Speculative — cache silently
-        speculativeTipText += delta;
-        console.log(`🔮 [Background] Speculative chunk cached (${speculativeTipText.length} chars)`);
-      }
+      console.log(`🌊 [Background] Tip chunk: "${delta.substring(0, 20)}..."`);
+      broadcastToUI({
+        type: 'TIP_CHUNK',
+        payload: { delta, heading, stage }
+      });
     })
 
-    // AI_TIP: Final complete tip — broadcast to UI OR cache for speculative
+    // AI_TIP: Final complete tip — broadcast to UI to finalize display
     awsWebSocketService.setAITipListener((tip) => {
       const suggestion = tip.options && tip.options.length > 0
         ? tip.options[0].script
@@ -1172,17 +1065,8 @@ async function connectAIBackend() {
         timestamp: tip.timestamp
       };
 
-      if (userRequestedTip) {
-        // User clicked button — finalize the streaming tip in UI
-        console.log('💡 [Background] AI Tip received — broadcasting final tip');
-        broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
-        userRequestedTip = false;
-      } else if (speculativeMode === 'generating') {
-        // Speculative generation completed — cache for instant display
-        speculativeMode = 'ready';
-        speculativeTipPayload = tipPayload;
-        console.log(`🔮 [Background] Speculative tip ready: "${speculativeTipText.substring(0, 40)}..."`);
-      }
+      console.log('💡 [Background] AI Tip received — broadcasting final tip');
+      broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
     })
 
     awsWebSocketService.setIntelligenceListener((payload) => {
@@ -1331,10 +1215,6 @@ async function connectAIBackend() {
 
 async function disconnectAIBackend() {
   console.log('🛑 [Background] Disconnecting AI Backend...')
-
-  // Clean up speculative pre-gen state
-  invalidateSpeculativeTip();
-  userRequestedTip = false;
 
   try {
     if (awsWebSocketService.hasActiveConversation()) {
