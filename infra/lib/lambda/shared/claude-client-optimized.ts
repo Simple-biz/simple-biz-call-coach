@@ -298,7 +298,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     const anthropic = await getAnthropicClient();
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 150, // Tips are ~50-80 tokens; lower = faster generation
+      max_tokens: 300, // Tips are ~50-80 tokens; longer for objection handling
       temperature: 0.3, // Lower for consistency and speed
       system: [
         {
@@ -395,7 +395,7 @@ export async function generateAITipStreaming(
 
     const stream = anthropic.messages.stream({
       model,
-      max_tokens: 150,
+      max_tokens: 300,
       temperature: 0.3,
       system: [
         {
