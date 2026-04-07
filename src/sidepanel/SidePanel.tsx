@@ -214,6 +214,7 @@ export default function SidePanel() {
 
         case "TIP_CHUNK":
           // Streaming: accumulate text chunks for progressive rendering
+          console.log(`🌊 [SidePanel] TIP_CHUNK received: "${(message.payload?.delta || '').substring(0, 30)}..."`);
           if (message.payload) {
             useCallStore.getState().appendStreamingChunk(
               message.payload.delta || '',
@@ -224,13 +225,14 @@ export default function SidePanel() {
             const streamingState = useCallStore.getState().streamingTip;
             if (streamingState) {
               const partialOption: ScriptOption = {
-                id: `streaming-tip-${Date.now()}`,
+                id: 'streaming-tip',
                 type: 'suggestion',
                 label: streamingState.heading || 'Generating...',
                 script: streamingState.text,
                 icon: 'zap'
               };
               useCallStore.getState().setCurrentScriptOptions([partialOption]);
+              console.log(`🌊 [SidePanel] Updated script options with streaming text (${streamingState.text.length} chars)`);
             }
           }
           break;
