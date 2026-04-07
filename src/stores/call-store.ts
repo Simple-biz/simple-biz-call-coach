@@ -360,14 +360,21 @@ export const useCallStore = create<CallStore>((set, get) => ({
       }
     }, 15000);
 
-    const transcriptText = state.transcriptions.slice(-10).map(t => t.text).join(' ');
+    // Send recent transcripts with speaker labels so Lambda can skip DB read
+    const recentTranscripts = state.transcriptions
+      .filter(t => t.isFinal !== false)
+      .slice(-20)
+      .map(t => ({
+        speaker: t.speaker === 'customer' ? 'caller' : 'agent',
+        text: t.text,
+      }));
     
     // Send message to Background Worker (which holds the WebSocket)
     chrome.runtime.sendMessage({
       type: 'REQUEST_NEXT_TIP',
       payload: {
         conversationId: state.aiConversationId || state.session?.id,
-        context: transcriptText,
+        transcripts: recentTranscripts,
         text: `[Requesting Tip] ${currentOption.label}`,
         timestamp: Date.now()
       }

@@ -883,9 +883,14 @@ async function processMessage(message: any, sender: any) {
         }
 
         // Request tip from Lambda — response streams back via TIP_CHUNK messages
+        // Pass client transcripts to skip DB read in Lambda
         try {
           console.log('🌊 [Background] Requesting streaming tip from Lambda...');
-          await awsWebSocketService.getIntelligence(extensionState.conversationId, false);
+          await awsWebSocketService.getIntelligence(
+            extensionState.conversationId,
+            false,
+            message.payload?.transcripts
+          );
           return { success: true, message: 'Streaming tip...' };
         } catch (error: any) {
           console.error('❌ [Background] Failed to request intelligence:', error);

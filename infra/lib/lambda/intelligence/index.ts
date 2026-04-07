@@ -46,26 +46,43 @@ export const handler = async (
 
     // Parse message body (optional parameters)
     const body = JSON.parse(event.body || '{}');
-    const { limit = 50, skipTip = false } = body;
+    const { limit = 50, skipTip = false, transcripts: clientTranscripts } = body;
 
-    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip})`);
+    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip}, clientTranscripts: ${clientTranscripts?.length || 0})`);
 
-    // 1. Fetch recent transcripts + count in a single query
-    const { transcripts, count: transcriptCount } = await getRecentTranscriptsWithCount(conversationId, limit);
-
-    if (transcripts.length === 0) {
-      console.warn('[Intelligence] No transcripts found for analysis');
-      return {
-        statusCode: 200,
-        body: JSON.stringify({ type: 'ERROR', payload: { code: 'NO_TRANSCRIPTS', message: 'No transcripts available' } })
-      };
-    }
-
-    console.log(`[Intelligence] Fetched ${transcripts.length} transcripts (${transcriptCount} total) for analysis`);
-
-    // 2. Check if we can use cached intelligence (for manual tip requests)
+    // 1. Check if we can use cached intelligence (for manual tip requests)
     const cached = !skipTip ? getCachedIntelligence(conversationId) : null;
 
+    // FAST PATH: Manual tip with cached intelligence AND client-provided transcripts
+    // Skip DB query entirely — saves ~200-400ms
+    const canSkipDb = !skipTip && cached && clientTranscripts && clientTranscripts.length > 0;
+
+    let transcripts: Array<{ speaker: string; text: string; timestamp?: number }>;
+    let transcriptCount: number;
+
+    if (canSkipDb) {
+      // Use client-provided transcripts (already chronological from client)
+      transcripts = clientTranscripts;
+      transcriptCount = clientTranscripts.length;
+      console.log(`[Intelligence] FAST PATH: Using ${transcriptCount} client-provided transcripts (skipping DB)`);
+    } else {
+      // NORMAL PATH: Fetch from DB (auto-analysis or no cache)
+      const dbResult = await getRecentTranscriptsWithCount(conversationId, limit);
+      transcripts = dbResult.transcripts;
+      transcriptCount = dbResult.count;
+
+      if (transcripts.length === 0) {
+        console.warn('[Intelligence] No transcripts found for analysis');
+        return {
+          statusCode: 200,
+          body: JSON.stringify({ type: 'ERROR', payload: { code: 'NO_TRANSCRIPTS', message: 'No transcripts available' } })
+        };
+      }
+
+      console.log(`[Intelligence] Fetched ${transcripts.length} transcripts (${transcriptCount} total) for analysis`);
+    }
+
+    // 2. Get intelligence (cached or compute)
     let intelligence;
     let cacheHit = false;
 
@@ -95,11 +112,14 @@ export const handler = async (
     if (!skipTip) {
       console.log(`[Intelligence] Generating AI tip...`);
 
+      // Client transcripts are chronological; DB transcripts are DESC (newest first)
+      // Normalize to chronological for turn counting
+      const chronological = canSkipDb ? [...transcripts] : [...transcripts].reverse();
+
       // Count conversation TURNS (speaker changes), not raw transcript fragments
       // Deepgram splits speech into fragments, so 1 turn = multiple rows
       let turnCount = 0;
       let lastSpeaker = '';
-      const chronological = [...transcripts].reverse();
       for (const t of chronological) {
         if (t.speaker !== lastSpeaker) {
           turnCount++;
@@ -120,10 +140,11 @@ export const handler = async (
 
       console.log(`[Intelligence] Turn count: ${turnCount} (from ${transcriptCount} transcript rows), stage: ${callStage}`);
 
-      // Detect conversion: if customer agreed to callback, override stage
-      // NOTE: transcripts are DESC ordered (newest first), so slice(0, N) = most recent N
-      const recentCustomerMessages = transcripts
-        .slice(0, 10)
+      // Detect conversion: check most recent 10 messages
+      // For client transcripts (chronological): slice(-10) = most recent
+      // For DB transcripts (DESC): slice(0, 10) = most recent
+      const recentMsgs = canSkipDb ? transcripts.slice(-10) : transcripts.slice(0, 10);
+      const recentCustomerMessages = recentMsgs
         .filter(t => t.speaker === 'caller')
         .map(t => t.text.toLowerCase());
       // Direct agreement (requires agent to have asked for callback)
@@ -137,8 +158,7 @@ export const handler = async (
         indirectSignals.some(signal => msg.includes(signal))
       );
       // Also check if agent already asked for callback
-      const recentAgentMessages = transcripts
-        .slice(0, 10)
+      const recentAgentMessages = recentMsgs
         .filter(t => t.speaker === 'agent')
         .map(t => t.text.toLowerCase());
       // Must match callback-ask patterns specifically, not just any mention of "Bob" (e.g. "Bob and I are here" in intro)
@@ -176,9 +196,16 @@ export const handler = async (
         }
       }
 
-      // Get most recent transcripts for AI context (DESC order → slice(0, N) then reverse for chronological)
+      // Get most recent transcripts for AI context
+      // Client transcripts are chronological: slice(-N) = most recent N
+      // DB transcripts are DESC: slice(0, N) then reverse for chronological
       const contextWindow = 15;
-      const recentTranscripts = transcripts.slice(0, contextWindow).reverse();
+      let recentTranscripts;
+      if (canSkipDb) {
+        recentTranscripts = transcripts.slice(-contextWindow);
+      } else {
+        recentTranscripts = transcripts.slice(0, contextWindow).reverse();
+      }
       const conversationContext = recentTranscripts
         .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
         .join('\n');
