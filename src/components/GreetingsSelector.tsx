@@ -21,7 +21,8 @@ const INITIAL_GREETINGS: ScriptOption[] = [
 ]
 
 export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSelectorProps) {
-  const { currentScriptOptions } = useCallStore()
+  const { currentScriptOptions, streamingTip } = useCallStore()
+  const isStreaming = !!streamingTip
 
   // Use the single option if available, otherwise fallback to first initial greeting
   const option = currentScriptOptions.length > 0
@@ -38,14 +39,11 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
   }
 
   const handleNext = () => {
-    if (isLoading || !option) return
+    if (isLoading || isStreaming || !option) return
     
     logger.log('🚀 [GreetingsSelector] User requested Next Suggestion (Context Refresh + Generate)')
     
-    // 1. Refresh Context (Latest Transcription)
     useCallStore.getState().refreshContext()
-    
-    // 2. Request Next Suggestion (Golden Script Cross-reference)
     useCallStore.getState().requestNextSuggestion(option)
   }
 
@@ -58,7 +56,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
         <span className="text-[9px] font-bold text-[#1B1F6B] uppercase tracking-widest">
           AI Suggested Line
         </span>
-        {isLoading && (
+        {(isLoading || isStreaming) && (
           <div className="flex gap-0.5 ml-auto">
             <div className="w-1 h-1 bg-[#1B1F6B] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
             <div className="w-1 h-1 bg-[#1B1F6B] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -87,8 +85,8 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
               </div>
               <div
                 className="text-[13px] leading-snug text-[#333333] font-normal selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-0.5 rounded transition-colors"
-                onClick={() => !isLoading && option && onSelect(option)}
-                title="Click to use this script"
+                onClick={() => !isLoading && !isStreaming && option && onSelect(option)}
+                title={isStreaming ? "Generating..." : "Click to use this script"}
               >
                 {isLoading ? (
                   <div className="space-y-1 py-1">
@@ -96,7 +94,10 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
                     <div className="h-2.5 w-2/3 bg-gray-200 rounded animate-pulse" />
                   </div>
                 ) : (
-                  option?.script
+                  <>
+                    {option?.script}
+                    {isStreaming && <span className="inline-block w-0.5 h-3.5 bg-[#1B1F6B] ml-0.5 align-middle animate-pulse" />}
+                  </>
                 )}
               </div>
             </div>
@@ -106,14 +107,19 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
             <div className="mt-2 text-center">
               <button
                 onClick={handleNext}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-[#1B1F6B] hover:bg-[#14174f] text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-all duration-200 active:scale-[0.97]"
-                title="Refresh context from live transcript and get tailored suggestion"
+                disabled={isStreaming}
+                className={`w-full flex items-center justify-center gap-1.5 py-1.5 px-3 text-white text-[10px] font-bold uppercase tracking-wider rounded-md transition-all duration-200 ${
+                  isStreaming
+                    ? 'bg-[#1B1F6B]/50 cursor-not-allowed'
+                    : 'bg-[#1B1F6B] hover:bg-[#14174f] active:scale-[0.97]'
+                }`}
+                title={isStreaming ? "Generating suggestion..." : "Refresh context from live transcript and get tailored suggestion"}
               >
-                Get Next Suggestion
-                <ArrowRight className="w-3 h-3" />
+                {isStreaming ? 'Generating...' : 'Get Next Suggestion'}
+                {!isStreaming && <ArrowRight className="w-3 h-3" />}
               </button>
               <p className="mt-1.5 text-[8px] text-[#757575] font-medium italic">
-                Refreshes context • Cross-references Golden Script • Tailored
+                {isStreaming ? 'Streaming AI response...' : 'Refreshes context • Cross-references Golden Script • Tailored'}
               </p>
             </div>
           )}

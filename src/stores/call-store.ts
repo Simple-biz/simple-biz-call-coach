@@ -42,6 +42,9 @@ interface CallStore {
   // Streaming tip state (progressive rendering)
   streamingTip: { heading?: string; stage?: string; text: string } | null;
 
+  // Loading state for tip generation (true from button click until tip arrives)
+  isGeneratingTip: boolean;
+
   // Actions
   startCall: () => void;
   endCall: () => void;
@@ -129,6 +132,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   // Streaming tip initial state
   streamingTip: null,
+  isGeneratingTip: false,
 
   startCall: () => {
     const newState = {
@@ -344,11 +348,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
   requestNextSuggestion: (currentOption) => {
     const state = get();
     console.log(`🔄 [Store] Requesting next suggestion for: ${currentOption.label}`);
-    
-    // Construct payload for Golden Script analysis (Legacy - now forwarded via BG)
-    // const payload = { ... }
 
-    // Call service (assumed global or import)
+    // Show loading state immediately on button click
+    set({ isGeneratingTip: true, streamingTip: null });
+
     const transcriptText = state.transcriptions.slice(-10).map(t => t.text).join(' ');
     
     // Send message to Background Worker (which holds the WebSocket)
@@ -357,11 +360,12 @@ export const useCallStore = create<CallStore>((set, get) => ({
       payload: {
         conversationId: state.aiConversationId || state.session?.id,
         context: transcriptText,
-        text: `[Requesting Tip] ${currentOption.label}`, // Marker for backend
+        text: `[Requesting Tip] ${currentOption.label}`,
         timestamp: Date.now()
       }
     }).catch(err => {
         console.error("❌ [Store] Failed to request next tip via background:", err);
+        set({ isGeneratingTip: false });
     });
   },
 
@@ -382,6 +386,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
       const current = state.streamingTip;
       if (current) {
         return {
+          isGeneratingTip: false,
           streamingTip: {
             ...current,
             text: current.text + delta,
@@ -391,13 +396,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
         };
       }
       return {
+        isGeneratingTip: false,
         streamingTip: { text: delta, heading, stage }
       };
     });
   },
 
   clearStreamingTip: () => {
-    set({ streamingTip: null });
+    set({ streamingTip: null, isGeneratingTip: false });
   },
 }));
 

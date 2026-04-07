@@ -27,7 +27,7 @@ export default function SidePanel() {
   } = useCallStore();
   const [deepgramStatus, setDeepgramStatus] =
     useState<DeepgramStatus>("disconnected");
-  const [isLoadingScripts] = useState(false);
+  const isLoadingScripts = useCallStore((s) => s.isGeneratingTip);
 
   // Sandbox mode: Customer input (text)
   const [customerMessage, setCustomerMessage] = useState('');
