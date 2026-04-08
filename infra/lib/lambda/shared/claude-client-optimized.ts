@@ -134,9 +134,10 @@ const SCRIPTS_ENGAGEMENT = `## ENGAGEMENT (follow-up questions for dry/short/unc
 10. Skeptical/Scam Concern: "Totally understand the caution. We're a legit local company here in [Location]. We just work with small businesses to help them get online. No pressure at all."`;
 
 const SCRIPTS_CONVERSION = `## CONVERSION
-1. Collect Details: "Bob can give you a call later today — what's the best number and time to reach you at?"
-   → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for number).
-   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best number to reach you at?"
+1. Collect Details: "Bob can give you a call later today — what's the best time and email to reach you at?"
+   → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for details).
+   → ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number. Ask for email and callback time instead.
+   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best email to reach you at?"
 2. Sign Off (Simple): "Bob will call you later at [time]. Thank you for your time, [Name]."
 3. Sign Off (Options): "We'll get back to you later. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
 4. Sign Off (Excited): "Of course yeah, I'll talk to you later then. Have a beautiful day [Name] and I'm super excited for you. Take care."`;
@@ -220,7 +221,7 @@ CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
    - OR the customer proactively says: "have Bob call me", "call me back", "they can call me", "have them call"
    - ⚠️ A casual "yeah" or "okay" at the START of a call (e.g. "yeah I have a minute") is NOT callback agreement — it's just the customer being polite. Only count it as agreement if it's clearly in response to a callback ask.
    → When truly agreed: switch to CONVERSION. Collect details. NEVER re-pitch.
-   → ⚠️ If customer gave a SPECIFIC TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best number to reach you at?" Do NOT ignore the time they gave.
+   → ⚠️ If customer gave a SPECIFIC TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best email to reach you at?" Do NOT ignore the time they gave.
    → ⚠️ If customer said "another time", "I'm busy right now", or wants to schedule later WITHOUT giving a specific time → ask WHEN: "No problem at all — when works best for you?" Do NOT assume "later today".
 3. ⚠️ Customer is FRUSTRATEDor says agent is repeating/not answering ("you're going in circles", "you keep saying the same thing", "you already said that", "I already told you", "I'm done", "you're not listening", "not answering my question", "dancin' around", "runaround", "you didn't answer", "straight answer", "level with me") → STOP everything. Do NOT repeat any previous script. Say something like: "I hear you, Ray, and I apologize for that." Then pivot DIRECTLY to Ask Callback. If customer is ALSO asking a question → briefly acknowledge it and redirect to Bob.
 4. Customer asks about PRICING, COST, or TIMELINE → Always redirect to Bob in ONE smooth sentence that flows into the callback ask: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?" Do NOT give specific pricing numbers — that's Bob's job. If customer pushes again: "I totally understand. Bob handles all the pricing and he'll be straight with you — would it work if he calls you today?"
@@ -248,14 +249,15 @@ CRITICAL - AI ASSISTANT / RECEPTIONIST DETECTION:
 
 STAGE DETERMINATION:
 - ⚠️ If Stage field says CONVERSION → The customer already agreed. Do NOT downgrade to CLOSING or re-pitch.
-  - CONVERSION flow: Ask Name → Ask Business Name → Ask Number/Email → Sign Off. That's it. 4 steps max.
+  - CONVERSION flow: Ask Name → Ask Business Name → Ask Email/Callback Time → Sign Off. That's it. 4 steps max.
+  - ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number unless they volunteer a different one.
   - ⚠️ CHECK the "COLLECTED INFO" section in the prompt. It tells you what the agent HAS and HAS NOT collected yet.
   - If customerName is NOT collected → Ask for their name FIRST using Confirm Name: "And your name is?"
   - If customerName IS collected but businessName is NOT → Ask: "And what's the name of your business?"
-  - If both name and business are collected but no number/email → USE Collect Details: "What's the best number and time to reach you at?"
-  - If ALL info is collected (name, business, phone/email) → Go straight to Sign Off. Do NOT ask for anything else.
+  - If both name and business are collected but no email → USE Collect Details: "What's the best email and time to reach you at?"
+  - If ALL info is collected (name, business, email) → Go straight to Sign Off. Do NOT ask for anything else.
   - ⚠️ If email is YES in COLLECTED INFO → Do NOT ask for email again. Move to Sign Off.
-  - ⚠️ If phoneNumber is YES in COLLECTED INFO → Do NOT ask for phone again. Move to Sign Off or ask for email only if missing.
+  - ⚠️ Do NOT ask for phone number — we already have it from the dialer. Only note it if the customer volunteers a different number.
   - If customer already stated their name (e.g. "It's Maria", "My name is...") → do NOT ask for name again. Move to next detail.
   - If customer already gave callback time (e.g. "call after 4", "this afternoon") → do NOT ask when to call. Move to Sign Off.
   - If customer says "I already said yes", "I already gave you that", "I already told you" → USE Sign Off IMMEDIATELY.
@@ -520,8 +522,8 @@ function buildCompressedPrompt(request: AITipRequest): string {
     parts.push(`\nCOLLECTED INFO (what the agent has/hasn't gathered):`);
     parts.push(`  customerName: ${info.customerName ? 'YES' : 'NO — ask for it'}`);
     parts.push(`  businessName: ${info.businessName ? 'YES' : 'NO — ask for it'}`);
-    parts.push(`  phoneNumber: ${info.phoneNumber ? 'YES' : 'NO'}`);
-    parts.push(`  email: ${info.email ? 'YES' : 'NO'}`);
+    parts.push(`  phoneNumber: ALREADY HAVE IT (we dialed them) — do NOT ask for phone`);
+    parts.push(`  email: ${info.email ? 'YES' : 'NO — ask for it'}`);
   }
 
   // Include recent conversation (last 10-15 messages with speaker labels)
