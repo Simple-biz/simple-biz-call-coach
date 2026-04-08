@@ -56,6 +56,7 @@ export class AWSWebSocketService {
   private intelligenceListener: ((data: IntelligenceUpdatePayload) => void) | null = null;
   private errorListener: ((error: { code: string; message: string }) => void) | null = null;
   private statusUpdateListener: ((payload: WebhookStatusUpdatePayload) => void) | null = null;
+  private tipChunkListener: ((delta: string, heading?: string, stage?: string) => void) | null = null;
 
   constructor() {
     console.log('🚀 [AWSWebSocket] Service initialized');
@@ -94,6 +95,13 @@ export class AWSWebSocketService {
    */
   setStatusUpdateListener(listener: (payload: WebhookStatusUpdatePayload) => void): void {
     this.statusUpdateListener = listener;
+  }
+
+  /**
+   * Set TIP_CHUNK listener (streaming tip deltas)
+   */
+  setTipChunkListener(listener: (delta: string, heading?: string, stage?: string) => void): void {
+    this.tipChunkListener = listener;
   }
 
   /**
@@ -267,22 +275,27 @@ export class AWSWebSocketService {
   /**
    * Request intelligence update (auto-analysis — skips AI tip generation)
    */
-  async getIntelligence(conversationId: string, skipTip = true): Promise<void> {
+  async getIntelligence(conversationId: string, skipTip = true, transcripts?: Array<{ speaker: string; text: string }>): Promise<void> {
     if (!this.isConnected()) {
       console.warn('⚠️ [AWSWebSocket] Cannot get intelligence - not connected');
       return;
     }
 
     try {
-      const message = {
+      const message: WebSocketMessage = {
         action: 'getIntelligence',
         conversationId,
         skipTip,
         timestamp: Date.now(),
       };
 
+      // Include client transcripts to skip DB read on tip path
+      if (transcripts && transcripts.length > 0) {
+        message.transcripts = transcripts;
+      }
+
       await this.sendMessage(message);
-      console.log(`🧠 [AWSWebSocket] Intelligence requested (skipTip: ${skipTip})`);
+      console.log(`🧠 [AWSWebSocket] Intelligence requested (skipTip: ${skipTip}, clientTranscripts: ${transcripts?.length || 0})`);
     } catch (error: any) {
       console.error('❌ [AWSWebSocket] Failed to request intelligence:', error);
     }
@@ -379,6 +392,17 @@ export class AWSWebSocketService {
             this.conversationStartRejecter(new Error('No conversation ID received'));
             this.conversationStartResolver = null;
             this.conversationStartRejecter = null;
+          }
+          break;
+
+        case 'TIP_CHUNK':
+          console.log(`🌊 [AWSWebSocket] TIP_CHUNK received: hasListener=${!!this.tipChunkListener}, delta="${(data.payload?.delta || '').substring(0, 30)}..."`);
+          if (data.payload && this.tipChunkListener) {
+            this.tipChunkListener(
+              data.payload.delta || '',
+              data.payload.heading,
+              data.payload.stage
+            );
           }
           break;
 

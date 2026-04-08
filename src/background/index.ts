@@ -93,41 +93,54 @@ let extensionState: ExtensionState = {
   callDetectionSource: null,
 }
 
+// Restore coachingPending from storage on service worker wake-up
+// (onStartup only fires on browser launch, not SW restarts after idle kill)
+chrome.storage.local.get(['coachingPending', 'userEmail', 'isAuthenticated']).then((data: Record<string, any>) => {
+  if (data.coachingPending) {
+    extensionState.coachingPending = true
+    console.log('🔄 [Background] Restored coachingPending=true from storage')
+  }
+  if (data.userEmail) {
+    extensionState.userEmail = data.userEmail
+    extensionState.isAuthenticated = data.isAuthenticated || false
+    console.log('✅ [Background] Restored user session:', data.userEmail)
+  }
+}).catch(err => {
+  console.error('❌ [Background] Failed to restore state from storage:', err)
+})
+
 // Keep-alive mechanism
 let keepAliveInterval: number | null = null
 
-// 3-Second Auto-Analysis Loop (DISABLED - manual suggestions only)
+// ============================================================================
+// AUTO-ANALYSIS LOOP — intelligence updates only (tips via streaming on click)
+// ============================================================================
 let autoAnalysisInterval: any = null;
+const AUTO_ANALYSIS_INTERVAL_MS = 10000;
 
 function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
-  console.log('🔄 [Background] Starting 10-second Auto-Analysis Loop');
+  console.log('🔄 [Background] Starting 10-second auto-analysis loop (intelligence only)');
+
+  // Fire first analysis immediately so cache is warm for early tip requests
+  if (awsWebSocketService.isConnected() && extensionState.isRecording && extensionState.conversationId) {
+    console.log('⚡ [Background] Running immediate first auto-analysis to warm cache');
+    awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+  }
 
   autoAnalysisInterval = setInterval(() => {
-     if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
-
-     // Only trigger if we have recent transcripts (last 10s)
-     const recentTranscripts = extensionState.transcriptions.slice(-5);
-     if (recentTranscripts.length === 0) return;
-     const lastTx = recentTranscripts[recentTranscripts.length - 1];
-     if (Date.now() - lastTx.timestamp > 10000) return; // No recent activity
-
-     const conversationId = extensionState.conversationId;
-     if (conversationId) {
-        // Trigger intelligence update only (no tip generation — tips are manual)
-        awsWebSocketService.getIntelligence(conversationId);
-     }
-  }, 10000
-
-
-);
+    if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
+    if (!extensionState.conversationId) return;
+    // skipTip=true: intelligence only, no tip generation (tips are streamed on click)
+    awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+  }, AUTO_ANALYSIS_INTERVAL_MS);
 }
 
 function stopAutoAnalysisLoop() {
   if (autoAnalysisInterval) {
     clearInterval(autoAnalysisInterval);
     autoAnalysisInterval = null;
-    console.log('🛑 [Background] Stopped Auto-Analysis Loop');
+    console.log('🛑 [Background] Stopped auto-analysis loop');
   }
 }
 
@@ -239,7 +252,17 @@ chrome.runtime.onConnect.addListener(port => {
         console.log(`✅ [Background] Call state updated (Tab: ${tabId})`)
 
         // Auto-start capture if coaching was armed before the call
-        if (extensionState.coachingPending && tabId) {
+        // Fallback: check storage in case SW restarted and module-level restore hasn't completed
+        let shouldStartCoaching = extensionState.coachingPending
+        if (!shouldStartCoaching && tabId) {
+          const stored = await chrome.storage.local.get('coachingPending')
+          shouldStartCoaching = stored.coachingPending === true
+          if (shouldStartCoaching) {
+            extensionState.coachingPending = true
+            console.log('🔄 [Background] Restored coachingPending from storage (fallback)')
+          }
+        }
+        if (shouldStartCoaching && tabId) {
           console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
           await startCaptureAndCoaching(tabId)
         }
@@ -273,8 +296,9 @@ chrome.runtime.onConnect.addListener(port => {
 
 // Helper to broadcast messages to all UI components
 function broadcastToUI(message: object): void {
-  chrome.runtime.sendMessage(message).catch(() => {
-    // UI might not be open, that's okay
+  chrome.runtime.sendMessage(message).catch((err) => {
+    // Log for debugging — UI might not be open, that's usually okay
+    console.warn(`⚠️ [Background] broadcastToUI failed for ${(message as any).type}:`, err?.message || err)
   })
 }
 
@@ -337,6 +361,7 @@ async function updateExtensionState(
       callState: extensionState.isOnCall ? 'active' : 'inactive',
       isOnCall: extensionState.isOnCall,
       isRecording: extensionState.isRecording,
+      coachingPending: extensionState.coachingPending || false,
 
       // Legacy support
       callStoreState: {
@@ -433,17 +458,7 @@ chrome.runtime.onInstalled.addListener(async details => {
 chrome.runtime.onStartup.addListener(() => {
   console.log('🔄 [Background] Startup - initializing')
   startKeepAlive()
-
-  // Restore state from storage
-  chrome.storage.local.get(['userEmail', 'isAuthenticated']).then((data: { userEmail?: string; isAuthenticated?: boolean }) => {
-    if (data.userEmail) {
-      extensionState.userEmail = data.userEmail
-      extensionState.isAuthenticated = data.isAuthenticated || false
-      console.log('✅ [Background] User session restored:', data.userEmail)
-    }
-  }).catch(error => {
-    console.error('❌ [Background] Failed to restore session:', error)
-  })
+  // State restoration is handled at module level (runs on every SW wake-up)
 })
 
 // Listen for settings changes
@@ -556,7 +571,17 @@ async function processMessage(message: any, sender: any) {
       console.log(`✅ [Background] New call initialized with clean state (Tab: ${callTabId})`)
 
       // Auto-start capture if coaching was armed before the call
-      if (extensionState.coachingPending && callTabId) {
+      // Fallback: check storage in case SW restarted and module-level restore hasn't completed
+      let shouldStartCoachingMsg = extensionState.coachingPending
+      if (!shouldStartCoachingMsg && callTabId) {
+        const stored = await chrome.storage.local.get('coachingPending')
+        shouldStartCoachingMsg = stored.coachingPending === true
+        if (shouldStartCoachingMsg) {
+          extensionState.coachingPending = true
+          console.log('🔄 [Background] Restored coachingPending from storage (fallback)')
+        }
+      }
+      if (shouldStartCoachingMsg && callTabId) {
         console.log('🎙️ [Background] Coaching was pending — auto-starting capture')
         await startCaptureAndCoaching(callTabId)
       }
@@ -847,7 +872,10 @@ async function processMessage(message: any, sender: any) {
 
       // Legacy handler - suppressed warning for demo
       case 'REQUEST_NEXT_TIP':
-        console.log('🔄 [Background] Request next tip - triggering intelligence update');
+        console.log('🔄 [Background] Request next tip (streaming)', {
+          wsConnected: awsWebSocketService.isConnected(),
+          conversationId: extensionState.conversationId,
+        });
 
         if (!awsWebSocketService.isConnected()) {
           console.error('❌ [Background] Cannot request tip - WebSocket not connected');
@@ -859,11 +887,16 @@ async function processMessage(message: any, sender: any) {
           return { success: false, error: 'No active conversation' };
         }
 
+        // Request tip from Lambda — response streams back via TIP_CHUNK messages
+        // Pass client transcripts to skip DB read in Lambda
         try {
-          // Trigger intelligence + AI tip generation (skipTip=false for manual request)
-          await awsWebSocketService.getIntelligence(extensionState.conversationId, false);
-          console.log('✅ [Background] Intelligence update requested');
-          return { success: true, message: 'Generating next suggestion...' };
+          console.log('🌊 [Background] Requesting streaming tip from Lambda...');
+          await awsWebSocketService.getIntelligence(
+            extensionState.conversationId,
+            false,
+            message.payload?.transcripts
+          );
+          return { success: true, message: 'Streaming tip...' };
         } catch (error: any) {
           console.error('❌ [Background] Failed to request intelligence:', error);
           return { success: false, error: error.message };
@@ -1008,26 +1041,32 @@ async function connectAIBackend() {
       })
     })
 
-    awsWebSocketService.setAITipListener((tip) => {
-      console.log('💡 [Background] AI Tip received:', tip)
+    // TIP_CHUNK: Forward streaming chunks to UI for progressive rendering
+    awsWebSocketService.setTipChunkListener((delta, heading, stage) => {
+      console.log(`🌊 [Background] Tip chunk: "${delta.substring(0, 20)}..."`);
+      broadcastToUI({
+        type: 'TIP_CHUNK',
+        payload: { delta, heading, stage }
+      });
+    })
 
-      // Convert AIRecommendation format to sidepanel payload format
-      // Extract first option as the suggestion (single suggestion system)
+    // AI_TIP: Final complete tip — broadcast to UI to finalize display
+    awsWebSocketService.setAITipListener((tip) => {
       const suggestion = tip.options && tip.options.length > 0
         ? tip.options[0].script
         : '';
 
-      broadcastToUI({
-        type: 'AI_TIP',
-        payload: {
-          heading: tip.heading,
-          stage: tip.stage,
-          context: tip.context,
-          suggestion: suggestion,
-          recommendationId: tip.recommendationId,
-          timestamp: tip.timestamp
-        }
-      })
+      const tipPayload = {
+        heading: tip.heading,
+        stage: tip.stage,
+        context: tip.context,
+        suggestion: suggestion,
+        recommendationId: tip.recommendationId,
+        timestamp: tip.timestamp
+      };
+
+      console.log('💡 [Background] AI Tip received — broadcasting final tip');
+      broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
     })
 
     awsWebSocketService.setIntelligenceListener((payload) => {

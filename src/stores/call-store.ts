@@ -39,6 +39,12 @@ interface CallStore {
   // Script Options field (for GreetingsSelector)
   currentScriptOptions: ScriptOption[];
 
+  // Streaming tip state (progressive rendering)
+  streamingTip: { heading?: string; stage?: string; text: string } | null;
+
+  // Loading state for tip generation (true from button click until tip arrives)
+  isGeneratingTip: boolean;
+
   // Actions
   startCall: () => void;
   endCall: () => void;
@@ -69,6 +75,10 @@ interface CallStore {
   requestNextSuggestion: (currentOption: ScriptOption) => void;
   refreshContext: () => void;
   setCurrentScriptOptions: (options: ScriptOption[]) => void;
+
+  // Streaming tip actions
+  appendStreamingChunk: (delta: string, heading?: string, stage?: string) => void;
+  clearStreamingTip: () => void;
 }
 
 // Shape of state persisted to chrome.storage.local under "callStoreState"
@@ -119,6 +129,10 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   // Script Options initial state
   currentScriptOptions: [],
+
+  // Streaming tip initial state
+  streamingTip: null,
+  isGeneratingTip: false,
 
   startCall: () => {
     const newState = {
@@ -334,24 +348,50 @@ export const useCallStore = create<CallStore>((set, get) => ({
   requestNextSuggestion: (currentOption) => {
     const state = get();
     console.log(`🔄 [Store] Requesting next suggestion for: ${currentOption.label}`);
-    
-    // Construct payload for Golden Script analysis (Legacy - now forwarded via BG)
-    // const payload = { ... }
 
-    // Call service (assumed global or import)
-    const transcriptText = state.transcriptions.slice(-10).map(t => t.text).join(' ');
+    // Show loading state immediately on button click
+    set({ isGeneratingTip: true, streamingTip: null });
+
+    // Safety timeout: reset loading if no response within 15s
+    setTimeout(() => {
+      if (get().isGeneratingTip) {
+        console.warn("⏰ [Store] Tip generation timed out after 15s");
+        set({ isGeneratingTip: false });
+      }
+    }, 15000);
+
+    // Send recent transcripts with speaker labels so Lambda can skip DB read
+    const recentTranscripts = state.transcriptions
+      .filter(t => t.isFinal !== false)
+      .slice(-20)
+      .map(t => ({
+        speaker: t.speaker === 'customer' ? 'caller' : 'agent',
+        text: t.text,
+      }));
     
     // Send message to Background Worker (which holds the WebSocket)
     chrome.runtime.sendMessage({
       type: 'REQUEST_NEXT_TIP',
       payload: {
         conversationId: state.aiConversationId || state.session?.id,
-        context: transcriptText,
-        text: `[Requesting Tip] ${currentOption.label}`, // Marker for backend
+        transcripts: recentTranscripts,
+        text: `[Requesting Tip] ${currentOption.label}`,
         timestamp: Date.now()
+      }
+    }).then((response) => {
+      console.log("📨 [Store] REQUEST_NEXT_TIP response:", JSON.stringify(response));
+      // Background wraps results: { success: true, result: { success: false, error: '...' } }
+      // Check both outer and inner success flags
+      if (response && !response.success) {
+        console.warn("⚠️ [Store] Tip request failed (outer):", response.error);
+        set({ isGeneratingTip: false });
+      } else if (response?.result && response.result.success === false) {
+        console.warn("⚠️ [Store] Tip request failed (inner):", response.result.error);
+        set({ isGeneratingTip: false });
       }
     }).catch(err => {
         console.error("❌ [Store] Failed to request next tip via background:", err);
+        set({ isGeneratingTip: false });
     });
   },
 
@@ -365,6 +405,31 @@ export const useCallStore = create<CallStore>((set, get) => ({
     set({ currentScriptOptions: options });
     console.log(`📝 [Store] Updated script options: ${options.length} options`);
     persistState(get());
+  },
+
+  appendStreamingChunk: (delta, heading, stage) => {
+    set((state) => {
+      const current = state.streamingTip;
+      if (current) {
+        return {
+          isGeneratingTip: false,
+          streamingTip: {
+            ...current,
+            text: current.text + delta,
+            ...(heading ? { heading } : {}),
+            ...(stage ? { stage } : {}),
+          }
+        };
+      }
+      return {
+        isGeneratingTip: false,
+        streamingTip: { text: delta, heading, stage }
+      };
+    });
+  },
+
+  clearStreamingTip: () => {
+    set({ streamingTip: null, isGeneratingTip: false });
   },
 }));
 

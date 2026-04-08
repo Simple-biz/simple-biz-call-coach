@@ -12,7 +12,7 @@ function getApiGwClient(domain: string, stage: string): ApiGatewayManagementApiC
 }
 
 export interface WebSocketMessage {
-  type: 'CONVERSATION_STARTED' | 'AI_TIP' | 'STATUS_UPDATE' | 'CONVERSATION_ENDED' | 'INTELLIGENCE_UPDATE' | 'ERROR' | 'PONG';
+  type: 'CONVERSATION_STARTED' | 'AI_TIP' | 'TIP_CHUNK' | 'STATUS_UPDATE' | 'CONVERSATION_ENDED' | 'INTELLIGENCE_UPDATE' | 'ERROR' | 'PONG';
   payload?: any;
 }
 

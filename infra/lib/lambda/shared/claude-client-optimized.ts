@@ -132,6 +132,7 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 ## CONVERSION (4 scripts)
 1. Collect Details: "Bob can give you a call later today — what's the best number and time to reach you at?"
    → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for number).
+   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best number to reach you at?"
 2. Sign Off (Simple): "Bob will call you later at [time]. Thank you for your time, [Name]."
 3. Sign Off (Options): "We'll get back to you later. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
 4. Sign Off (Excited): "Of course yeah, I'll talk to you later then. Have a beautiful day [Name] and I'm super excited for you. Take care."`;
@@ -182,7 +183,8 @@ CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
    - OR the customer proactively says: "have Bob call me", "call me back", "they can call me", "have them call"
    - ⚠️ A casual "yeah" or "okay" at the START of a call (e.g. "yeah I have a minute") is NOT callback agreement — it's just the customer being polite. Only count it as agreement if it's clearly in response to a callback ask.
    → When truly agreed: switch to CONVERSION. Collect details. NEVER re-pitch.
-   → ⚠️ If customer also gave a TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best number to reach you at?" Do NOT ignore the time they gave.
+   → ⚠️ If customer gave a SPECIFIC TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best number to reach you at?" Do NOT ignore the time they gave.
+   → ⚠️ If customer said "another time", "I'm busy right now", or wants to schedule later WITHOUT giving a specific time → ask WHEN: "No problem at all — when works best for you?" Do NOT assume "later today".
 3. ⚠️ Customer is FRUSTRATEDor says agent is repeating/not answering ("you're going in circles", "you keep saying the same thing", "you already said that", "I already told you", "I'm done", "you're not listening", "not answering my question", "dancin' around", "runaround", "you didn't answer", "straight answer", "level with me") → STOP everything. Do NOT repeat any previous script. Say something like: "I hear you, Ray, and I apologize for that." Then pivot DIRECTLY to Ask Callback. If customer is ALSO asking a question → briefly acknowledge it and redirect to Bob.
 4. Customer asks about PRICING, COST, or TIMELINE → Always redirect to Bob in ONE smooth sentence that flows into the callback ask: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?" Do NOT give specific pricing numbers — that's Bob's job. If customer pushes again: "I totally understand. Bob handles all the pricing and he'll be straight with you — would it work if he calls you today?"
 5. Customer asks about specific FEATURES or CAPABILITIES ("can you do online booking?", "does it sync with Instagram?", "can you add a form?") → Acknowledge briefly, then smoothly transition into the callback ask in ONE natural sentence: "Definitely, my partner Bob can show you exactly how that works — would you mind if he gives you a quick call later today? Does that sound good?"
@@ -296,7 +298,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
     const anthropic = await getAnthropicClient();
     const response = await anthropic.messages.create({
       model,
-      max_tokens: 250, // Increased for complex scripts with callback asks
+      max_tokens: 300, // Tips are ~50-80 tokens; longer for objection handling
       temperature: 0.3, // Lower for consistency and speed
       system: [
         {
@@ -375,6 +377,92 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
 }
 
 // ============================================================================
+// STREAMING CLAUDE API CALL — pushes text chunks via callback
+// ============================================================================
+
+export async function generateAITipStreaming(
+  request: AITipRequest,
+  onChunk: (delta: string) => Promise<void>
+): Promise<AITipResponse> {
+  const startTime = Date.now();
+  const model = HAIKU_MODEL;
+
+  try {
+    const userPrompt = buildCompressedPrompt(request);
+    const anthropic = await getAnthropicClient();
+
+    let fullText = '';
+
+    const stream = anthropic.messages.stream({
+      model,
+      max_tokens: 300,
+      temperature: 0.3,
+      system: [
+        {
+          type: 'text' as const,
+          text: SYSTEM_PROMPT_COMPRESSED,
+          cache_control: { type: 'ephemeral' as const }
+        },
+        {
+          type: 'text' as const,
+          text: MARKS_GOLDEN_SCRIPTS,
+          cache_control: { type: 'ephemeral' as const }
+        }
+      ],
+      messages: [
+        { role: 'user' as const, content: userPrompt }
+      ]
+    });
+
+    // Use for-await to properly handle async onChunk (sendToConnection)
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        const text = event.delta.text;
+        fullText += text;
+        try {
+          await onChunk(text);
+        } catch (err) {
+          console.error('[Claude Stream] Error sending chunk:', err);
+        }
+      }
+    }
+
+    const finalMessage = await stream.finalMessage();
+
+    const latency = Date.now() - startTime;
+
+    console.log('[Claude Stream] Full Response:');
+    console.log('=====================================');
+    console.log(fullText);
+    console.log('=====================================');
+
+    const cachedTokens = finalMessage.usage.cache_read_input_tokens || 0;
+    const totalInputTokens = finalMessage.usage.input_tokens + cachedTokens;
+    const cacheHitRate = totalInputTokens > 0 ? cachedTokens / totalInputTokens : 0;
+
+    const parsed = parseAITipResponse(fullText, request.callStage);
+
+    console.log(`[Claude Stream] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: Haiku`);
+
+    return {
+      ...parsed,
+      model: 'haiku',
+      latency,
+      cacheHitRate,
+      tokenMetrics: {
+        cached: cachedTokens,
+        input: finalMessage.usage.input_tokens,
+        output: finalMessage.usage.output_tokens
+      }
+    };
+
+  } catch (error: any) {
+    console.error('[Claude Stream] API Error:', error);
+    return getFallbackSuggestion(request.callStage, Date.now() - startTime);
+  }
+}
+
+// ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
 
@@ -398,7 +486,7 @@ function buildCompressedPrompt(request: AITipRequest): string {
   // Include recent conversation (last 10-15 messages with speaker labels)
   // This gives Claude proper context to understand the conversation flow
   if (request.recentTranscript) {
-    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 2400)}`);
+    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1800)}`);
   }
 
   // Include summary for additional context
