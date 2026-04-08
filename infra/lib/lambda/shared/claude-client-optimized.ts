@@ -554,14 +554,20 @@ function buildCompressedPrompt(request: AITipRequest): string {
     }
   }
 
-  // Include recent conversation (last 10-15 messages with speaker labels)
-  // This gives Claude proper context to understand the conversation flow
+  // Include recent conversation with speaker labels
+  // CRITICAL: Keep the MOST RECENT messages (truncate from the START, not the end)
+  // so the model always sees what just happened, not ancient history
   if (request.recentTranscript) {
-    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1800)}`);
+    const transcript = request.recentTranscript;
+    const maxLen = 2200;
+    const truncated = transcript.length > maxLen 
+      ? '...\n' + transcript.substring(transcript.length - maxLen)
+      : transcript;
+    parts.push(`\nRecent Conversation:\n${truncated}`);
     
     // Extract the LAST 3 lines as a highlighted "LATEST EXCHANGE" so the model
     // doesn't get lost in older context and always responds to what JUST happened
-    const lines = request.recentTranscript.trim().split('\n');
+    const lines = transcript.trim().split('\n');
     if (lines.length > 3) {
       const latest = lines.slice(-3).join('\n');
       parts.push(`\n⚠️ LATEST EXCHANGE (your tip MUST respond to THIS — not older messages):\n${latest}`);
