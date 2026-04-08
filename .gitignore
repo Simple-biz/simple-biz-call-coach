@@ -43,3 +43,5 @@ tests/manual/reload-test-contact.cjs
 .bmad/
 bmad-custom-src/
 ._*
+
+devassist-call-coach-backend/
