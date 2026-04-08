@@ -463,7 +463,40 @@ export default function SidePanel() {
     let textContent = `Call Transcription Export\n`;
     textContent += `Date: ${new Date().toLocaleString()}\n`;
     textContent += `Total Transcripts: ${finalTranscripts.length}\n`;
-    textContent += `\n${"=".repeat(50)}\n\n`;
+
+    // Intelligence Dashboard
+    if (intelligence || entities) {
+      textContent += `\n${"=".repeat(50)}\n`;
+      textContent += `CONVERSATION INTELLIGENCE\n`;
+      textContent += `${"=".repeat(50)}\n\n`;
+
+      if (intelligence?.sentiment) {
+        const s = intelligence.sentiment;
+        textContent += `Sentiment: ${s.label} (${s.score ? Math.round(s.score * 100) + '%' : 'N/A'} confidence)\n`;
+      }
+
+      if (entities) {
+        if (entities.businessNames?.length) textContent += `Business: ${entities.businessNames.join(', ')}\n`;
+        if (entities.websiteStatus && entities.websiteStatus !== 'unknown') textContent += `Website Status: ${entities.websiteStatus === 'has_website' ? 'Has Website' : 'No Website'}\n`;
+        if (entities.contactInfo?.phoneNumbers?.length) textContent += `Phone: ${entities.contactInfo.phoneNumbers.join(', ')}\n`;
+        if (entities.contactInfo?.emails?.length) textContent += `Email: ${entities.contactInfo.emails.join(', ')}\n`;
+        if (entities.contactInfo?.urls?.length) textContent += `Website: ${entities.contactInfo.urls.join(', ')}\n`;
+        if (entities.locations?.length) textContent += `Location: ${entities.locations.join(', ')}\n`;
+        if (entities.dates?.length) textContent += `Dates: ${entities.dates.join(', ')}\n`;
+        if (entities.people?.length) textContent += `People: ${entities.people.join(', ')}\n`;
+      }
+
+      if (intelligence?.intents?.length) {
+        textContent += `Intents: ${intelligence.intents.map(i => i.intent).join(', ')}\n`;
+      }
+      if (intelligence?.topics?.length) {
+        textContent += `Topics: ${intelligence.topics.map(t => t.topic).join(', ')}\n`;
+      }
+    }
+
+    textContent += `\n${"=".repeat(50)}\n`;
+    textContent += `TRANSCRIPT\n`;
+    textContent += `${"=".repeat(50)}\n\n`;
 
     finalTranscripts.forEach((t) => {
       const time = formatTime(t.timestamp);
@@ -493,6 +526,23 @@ export default function SidePanel() {
       callDuration: callState === "active" ? "ongoing" : "completed",
       totalTranscripts: transcriptions.filter((t) => t.isFinal).length,
       totalCoachingTips: coachingTips.length,
+      intelligence: intelligence ? {
+        sentiment: intelligence.sentiment || null,
+        intents: intelligence.intents || [],
+        topics: intelligence.topics || [],
+      } : null,
+      entities: entities ? {
+        businessNames: entities.businessNames || [],
+        websiteStatus: entities.websiteStatus || 'unknown',
+        contactInfo: {
+          phoneNumbers: entities.contactInfo?.phoneNumbers || [],
+          emails: entities.contactInfo?.emails || [],
+          urls: entities.contactInfo?.urls || [],
+        },
+        locations: entities.locations || [],
+        dates: entities.dates || [],
+        people: entities.people || [],
+      } : null,
       transcripts: transcriptions
         .filter((t) => t.isFinal)
         .map((t) => ({
