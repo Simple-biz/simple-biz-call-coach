@@ -137,7 +137,7 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
           </div>
         </div>
 
-        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd] col-span-2">
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
           <User className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
             <div className="text-[10px] text-[#757575]">People</div>
