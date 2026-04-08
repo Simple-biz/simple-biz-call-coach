@@ -1,4 +1,4 @@
-import { Smile, Frown, Meh, TrendingUp, MapPin, Calendar, Mail, Phone, Globe, Building2, User } from 'lucide-react'
+import { Smile, Frown, Meh, TrendingUp, MapPin, Calendar, Mail, Phone, Globe, Building2, User, Monitor } from 'lucide-react'
 import type { ConversationIntelligence, ExtractedEntities } from '@/types'
 
 interface IntelligenceDisplayProps {
@@ -22,6 +22,16 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
   const locations = entities?.locations || [];
   const dates = entities?.dates || [];
   const people = entities?.people || [];
+  const websiteStatus = entities?.websiteStatus || 'unknown';
+
+  const getWebsiteStatusDisplay = (status: string) => {
+    switch (status) {
+      case 'has_website': return { text: 'Has Website', color: 'text-blue-600' };
+      case 'no_website': return { text: 'No Website', color: 'text-orange-500' };
+      default: return { text: '--', color: 'text-[#757575] italic' };
+    }
+  };
+  const wsDisplay = getWebsiteStatusDisplay(websiteStatus);
 
   const getSentimentIcon = (label: string) => {
     switch (label) {
@@ -88,11 +98,11 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
         </div>
 
         <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
-          <Mail className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
+          <Monitor className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
           <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-[#757575]">Email</div>
-            <div className="text-xs font-medium text-[#333333] truncate">
-               {emails.length > 0 ? emails.join(', ') : <span className="text-[#757575] italic">--</span>}
+            <div className="text-[10px] text-[#757575]">Website Status</div>
+            <div className={`text-xs font-medium truncate ${wsDisplay.color}`}>
+               {wsDisplay.text}
             </div>
           </div>
         </div>
@@ -103,6 +113,16 @@ export function IntelligenceDisplay({ intelligence, entities, isRecording }: Int
             <div className="text-[10px] text-[#757575]">Phone</div>
             <div className="text-xs font-medium text-[#333333] truncate">
                {phones.length > 0 ? phones.join(', ') : <span className="text-[#757575] italic">--</span>}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 p-1.5 rounded bg-[#F5F7FA] border border-[#dddddd]">
+          <Mail className="w-3.5 h-3.5 text-[#1B1F6B] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-[10px] text-[#757575]">Email</div>
+            <div className="text-xs font-medium text-[#333333] truncate">
+               {emails.length > 0 ? emails.join(', ') : <span className="text-[#757575] italic">--</span>}
             </div>
           </div>
         </div>
