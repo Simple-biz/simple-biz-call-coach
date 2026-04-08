@@ -110,7 +110,8 @@ Extract and return ONLY valid JSON with this structure:
     },
     "locations": ["cities, states, countries, street addresses"],
     "dates": ["ANY date, time, day, or scheduling reference — e.g. 'tomorrow', 'March 19', '9AM', 'Thursday afternoon', 'next week'"],
-    "people": ["CUSTOMER's name only — NOT the agent's name, NOT 'Bob' or other agent team members"]
+    "people": ["CUSTOMER's name only — NOT the agent's name, NOT 'Bob' or other agent team members"],
+    "websiteStatus": "has_website" | "no_website" | "unknown"
   }
 }
 
@@ -121,8 +122,9 @@ IMPORTANT extraction rules:
 - phoneNumbers: Extract numbers the CUSTOMER provides. Do NOT include numbers the agent offers.
 - people: Extract the CUSTOMER's name only. Do NOT include the agent's name, "Bob", or other agent team members.
 - businessNames: Extract the CUSTOMER's business name. Do NOT include the agent's company name.
+- websiteStatus: Determine from the CUSTOMER's responses whether they currently have a website. "has_website" if they say they have one, "no_website" if they say they don't, "unknown" if not mentioned yet.
 
-Common intents: interested, not_interested, pricing_inquiry, request_callback, objection, purchase_intent, information_seeking
+Common intents:interested, not_interested, pricing_inquiry, request_callback, objection, purchase_intent, information_seeking
 Common topics: pricing, services, website_optimization, SEO, marketing, scheduling, follow_up
 
 Return ONLY the JSON object, no other text.`;

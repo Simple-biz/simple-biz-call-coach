@@ -104,6 +104,7 @@ export interface ExtractedEntities {
   locations: string[];
   dates: string[];
   people: string[];
+  websiteStatus?: 'has_website' | 'no_website' | 'unknown';
   timestamp: number;
 }
 
