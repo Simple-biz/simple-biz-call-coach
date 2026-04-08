@@ -239,7 +239,7 @@ export const handler = async (
       // Get most recent transcripts for AI context
       // Client transcripts are chronological: slice(-N) = most recent N
       // DB transcripts are DESC: slice(0, N) then reverse for chronological
-      const contextWindow = 15;
+      const contextWindow = 10;
       let recentTranscripts;
       if (canSkipDb) {
         recentTranscripts = transcripts.slice(-contextWindow);
