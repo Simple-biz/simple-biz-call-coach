@@ -13,6 +13,9 @@ const previousSuggestionsCache: Record<string, string[]> = {};
 // Track highest stage reached per conversation — never regress from CONVERSION/SIGNOFF
 const stageHighWaterMark: Record<string, string> = {};
 
+// Track established facts per conversation — prevents repeating questions about things already discussed
+const conversationFacts: Record<string, Set<string>> = {};
+
 /**
  * IntelligenceHandler Lambda Function
  *
@@ -250,7 +253,73 @@ export const handler = async (
       // Get most recent transcripts for AI context
       // Client transcripts are chronological: slice(-N) = most recent N
       // DB transcripts are DESC: slice(0, N) then reverse for chronological
-      const contextWindow = 15;
+      const contextWindow = 20;
+
+      // ── Accumulate conversation facts ──
+      // These persist across tip requests within the same Lambda container
+      if (!conversationFacts[conversationId]) {
+        conversationFacts[conversationId] = new Set();
+      }
+      const facts = conversationFacts[conversationId];
+
+      // Website status from intelligence entities
+      if (intelligence.entities?.websiteStatus === 'has_website') {
+        facts.add('Customer ALREADY HAS a website — do NOT ask if they have one. Pivot to optimization/SEO.');
+      } else if (intelligence.entities?.websiteStatus === 'no_website') {
+        facts.add('Customer does NOT have a website — pitch building one.');
+      }
+
+      // Business identified
+      if (intelligence.entities?.businessNames?.length) {
+        facts.add(`Customer's business: ${intelligence.entities.businessNames.join(', ')}`);
+      }
+
+      // Customer expressed interest or objection via intents
+      if (intelligence.intents?.includes('not_interested')) {
+        facts.add('Customer expressed NOT INTERESTED — handle objections carefully, do not hard-sell.');
+      }
+      if (intelligence.intents?.includes('request_callback')) {
+        facts.add('Customer agreed to a callback — move to CONVERSION, collect details.');
+      }
+
+      // Key contact info collected
+      if ((intelligence.entities?.people?.length ?? 0) > 0) {
+        facts.add(`Customer name collected: ${intelligence.entities!.people!.join(', ')}`);
+      }
+      if ((intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0) {
+        facts.add(`Customer email collected: ${intelligence.entities!.contactInfo!.emails!.join(', ')}`);
+      }
+
+      // Scan transcript for agent already asking about website (detect repetition)
+      const allMessages = canSkipDb ? transcripts : transcripts.slice().reverse();
+      const agentAskedWebsite = allMessages.some(t =>
+        t.speaker === 'agent' && /do you (have|currently have) a website|is that something you('ve| have) been/i.test(t.text)
+      );
+      const customerAnsweredWebsite = allMessages.some(t =>
+        t.speaker === 'caller' && /already have a website|have a website|have a web|website.*(up|running)|got a website/i.test(t.text)
+      );
+      if (agentAskedWebsite && customerAnsweredWebsite) {
+        facts.add('Agent ALREADY ASKED about website and customer answered — do NOT ask again.');
+      }
+
+      // Agent already pitched SEO
+      const agentPitchedSEO = allMessages.some(t =>
+        t.speaker === 'agent' && /especially with seo|optimize websites|seo at super affordable/i.test(t.text)
+      );
+      if (agentPitchedSEO) {
+        facts.add('Agent ALREADY PITCHED SEO/optimization — do NOT repeat the same pitch.');
+      }
+
+      // Agent already asked for callback
+      const agentAskedCallback = allMessages.some(t =>
+        t.speaker === 'agent' && /would you mind if.*(bob|partner)|give you a quick call/i.test(t.text)
+      );
+      if (agentAskedCallback) {
+        facts.add('Agent ALREADY ASKED for callback — do NOT suggest asking again unless context changed.');
+      }
+
+      console.log(`[Intelligence] Conversation facts (${facts.size}):`, Array.from(facts));
+
       let recentTranscripts;
       if (canSkipDb) {
         recentTranscripts = transcripts.slice(-contextWindow);
@@ -273,6 +342,7 @@ export const handler = async (
         conversationSummary: intelligence.summary,
         transcriptCount,
         previousSuggestions: prevSuggestions,
+        conversationFacts: Array.from(facts),
         collectedInfo: {
           customerName: (intelligence.entities?.people?.length ?? 0) > 0,
           businessName: (intelligence.entities?.businessNames?.length ?? 0) > 0,

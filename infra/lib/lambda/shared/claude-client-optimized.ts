@@ -27,6 +27,7 @@ export interface AITipRequest {
   conversationSummary?: string;
   transcriptCount?: number;
   previousSuggestions?: string[];
+  conversationFacts?: string[];
   collectedInfo?: {
     customerName: boolean;
     businessName: boolean;
@@ -319,6 +320,14 @@ GOOD (redirect to Bob):
 - If you've already pitched SEO AND already asked for callback AND the customer is STILL hesitant → use Respect Decline. The customer is not interested. End gracefully.
 - NEVER repeat the same pitch more than once in a conversation. If it didn't work the first time, a different approach is needed.
 
+⚠️ ESTABLISHED FACTS AWARENESS (CRITICAL):
+- READ the "ESTABLISHED FACTS" section in the prompt. These are things ALREADY discussed or detected in this call.
+- If a fact says "Customer ALREADY HAS a website" → NEVER suggest asking "Do you have a website?" — instead pivot to SEO/optimization or Ask Callback.
+- If a fact says "Agent ALREADY ASKED about website" → the website question is DONE. Do NOT repeat it.
+- If a fact says "Agent ALREADY PITCHED SEO" → do NOT suggest SEO Pivot or SEO Affirmation again.
+- If a fact says "Agent ALREADY ASKED for callback" → only suggest callback ask again if context significantly changed (e.g. new objection handled).
+- ⚠️ IDENTITY: We are "local website designers" — NOT a "digital marketing company", "marketing agency", or "web dev agency". Always use: "my partner Bob and I are local website designers."
+
 ⚠️ FRUSTRATION DETECTION:
 - Frustrated phrases: "you're repeating", "you already said that", "I'm done", "going in circles", "not listening", "I already told you", "not answering", "didn't answer", "dancin' around", "runaround", "straight answer", "level with me", "same thing", "waste of time"
 - If frustrated DURING CONVERSION: Sign Off IMMEDIATELY.
@@ -524,6 +533,14 @@ function buildCompressedPrompt(request: AITipRequest): string {
     parts.push(`  businessName: ${info.businessName ? 'YES' : 'NO — ask for it'}`);
     parts.push(`  phoneNumber: ALREADY HAVE IT (we dialed them) — do NOT ask for phone`);
     parts.push(`  email: ${info.email ? 'YES' : 'NO — ask for it'}`);
+  }
+
+  // Include conversation facts — established truths about this call
+  if (request.conversationFacts?.length) {
+    parts.push(`\n⚠️ ESTABLISHED FACTS (do NOT contradict or re-ask these):`);
+    for (const fact of request.conversationFacts) {
+      parts.push(`  • ${fact}`);
+    }
   }
 
   // Include recent conversation (last 10-15 messages with speaker labels)
