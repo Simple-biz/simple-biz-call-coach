@@ -139,8 +139,12 @@ const SCRIPTS_CONVERSION = `## CONVERSION
    → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for details).
    → ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number. Ask for email and callback time instead.
    → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best email to reach you at?"
-2. Sign Off (Simple): "Bob will call you later at [time]. Thank you for your time, [Name]."
-3. Sign Off (Options): "We'll get back to you later. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
+2. Sign Off (Simple): "Got it, [Name]. Bob will give you a call back [time]. Have a beautiful day and I'm super excited for you. Take care!"
+   → ⚠️ We already have the customer's phone number (we dialed them). Bob will CALL THEM BACK — do NOT say "call at your email". Email is only for sending additional info, NOT for calling.
+   → If customer gave email → "Bob will give you a call back and we'll send more info to your email. Have a beautiful day!"
+   → If customer gave a specific time → "Bob will call you back at [time]. Have a beautiful day!"
+   → If no specific time → "Bob will give you a call back later. Have a beautiful day and I'm super excited for you. Take care!"
+3. Sign Off (Options): "We'll give you a call back. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
 4. Sign Off (Excited): "Of course yeah, I'll talk to you later then. Have a beautiful day [Name] and I'm super excited for you. Take care."`;
 
 /**
@@ -267,7 +271,8 @@ STAGE DETERMINATION:
   - If customer already gave callback time (e.g. "call after 4", "this afternoon") → do NOT ask when to call. Move to Sign Off.
   - If customer says "I already said yes", "I already gave you that", "I already told you" → USE Sign Off IMMEDIATELY.
   - ⚠️ ALSO read the transcript — if the customer just gave info (phone, email, name) in their LATEST message, acknowledge it and move to the NEXT step, do NOT re-ask what they just said.
-- ⚠️ If Stage field says SIGNOFF → Output ONLY a Sign Off script. Example: "Got it, [Name]! Bob will call you [time]. Have a beautiful day and I'm super excited for you. Take care!"
+- ⚠️ If Stage field says SIGNOFF → Output ONLY a Sign Off script. Example: "Got it, [Name]! Bob will give you a call back [time]. Have a beautiful day and I'm super excited for you. Take care!"
+   → ⚠️ Bob will CALL THEM BACK (we have their phone number). Do NOT say "call at your email" — email is for sending info, not for calling.
 - For all other stages, you MAY override if the transcript clearly shows a different stage:
   - GREETING: First 1-2 exchanges, no pitch given yet
   - VALUE_PROP: Intro done, customer asking what you want, pitch not fully delivered
@@ -306,7 +311,8 @@ GOOD (redirect to Bob):
 - Do NOT give specific pricing numbers, timelines, or technical feature details — those are ALL Bob's job. The agent redirects to Bob for anything detailed.
 - Keep the value prop simple: "We're super affordable, just don't want you to miss out at all."
 - ⚠️ EVERY tip MUST end with a QUESTION or a callback ask. Never leave the agent with a dead-end statement.
-- ⚠️ If the customer ASKS a question ("when will we schedule?", "what's your website?", "how does this work?"), your script MUST acknowledge/answer their question FIRST, then flow into the golden script. Do NOT ignore what they just asked. The agent should always have something to say next after delivering the script. If the script doesn't end with a question, ADD one (e.g. "Do you currently have a website?" or "Would a quick call work?").
+- ⚠️ If the customer ASKS a question ("when will we schedule?", "what's your website?", "how does this work?", "who's Bob?"), your script MUST acknowledge/answer their question FIRST, then flow into the golden script. Do NOT ignore what they just asked. The agent should always have something to say next after delivering the script. If the script doesn't end with a question, ADD one (e.g. "Do you currently have a website?" or "Would a quick call work?").
+- ⚠️ LATEST EXCHANGE PRIORITY: Look at the "LATEST EXCHANGE" section in the prompt. Your tip MUST respond to what's happening THERE — not to something said 5 messages ago. If the customer just asked a question, answer IT. If the customer just gave info, acknowledge IT. Do NOT generate a tip for an older part of the conversation.
 - Goal: Build rapport → secure callback agreement
 
 ⚠️ ANTI-REPETITION (CRITICAL — READ THIS):
@@ -552,6 +558,14 @@ function buildCompressedPrompt(request: AITipRequest): string {
   // This gives Claude proper context to understand the conversation flow
   if (request.recentTranscript) {
     parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1800)}`);
+    
+    // Extract the LAST 3 lines as a highlighted "LATEST EXCHANGE" so the model
+    // doesn't get lost in older context and always responds to what JUST happened
+    const lines = request.recentTranscript.trim().split('\n');
+    if (lines.length > 3) {
+      const latest = lines.slice(-3).join('\n');
+      parts.push(`\n⚠️ LATEST EXCHANGE (your tip MUST respond to THIS — not older messages):\n${latest}`);
+    }
   }
 
   // Include summary for additional context
