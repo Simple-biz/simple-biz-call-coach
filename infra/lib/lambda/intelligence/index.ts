@@ -10,6 +10,9 @@ import { getCachedIntelligence, setCachedIntelligence } from './cache';
 // Track previous AI suggestions per conversation (Lambda memory — resets on cold start)
 const previousSuggestionsCache: Record<string, string[]> = {};
 
+// Track highest stage reached per conversation — never regress from CONVERSION/SIGNOFF
+const stageHighWaterMark: Record<string, string> = {};
+
 /**
  * IntelligenceHandler Lambda Function
  *
@@ -147,11 +150,35 @@ export const handler = async (
       const recentCustomerMessages = recentMsgs
         .filter(t => t.speaker === 'caller')
         .map(t => t.text.toLowerCase());
-      // Direct agreement (requires agent to have asked for callback)
+
+      // Objection phrases — if customer says these AFTER a short "yeah/okay", it's not real agreement
+      const objectionPhrases = ['already have', 'i don\'t know', 'not sure', 'i don\'t need', 'not interested', 'i\'m good', 'no thanks', 'my developer', 'don\'t think', 'already said', 'already told'];
+
+      // Only check LAST 3 customer messages for direct agreement (avoids stale filler words)
+      const last3CustomerMsgs = recentCustomerMessages.slice(-3);
       const directSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
-      const hasDirectAgreement = recentCustomerMessages.some(msg =>
-        directSignals.some(signal => msg.includes(signal))
-      );
+
+      // Smart agreement detection: filter out filler "yeah/okay" followed by objections
+      let hasDirectAgreement = false;
+      for (let i = 0; i < last3CustomerMsgs.length; i++) {
+        const msg = last3CustomerMsgs[i];
+        const isAgreement = directSignals.some(signal => msg.includes(signal));
+        if (!isAgreement) continue;
+
+        // If this message itself contains objection language → not real agreement
+        if (objectionPhrases.some(p => msg.includes(p))) continue;
+
+        // Short filler (≤5 words) like "Yeah." — only counts if NO later messages contain objections
+        if (msg.split(/\s+/).length <= 5) {
+          const laterMsgs = last3CustomerMsgs.slice(i + 1);
+          if (laterMsgs.some(m => objectionPhrases.some(p => m.includes(p)))) continue;
+        }
+
+        hasDirectAgreement = true;
+        break;
+      }
+
+      // Direct agreement (requires agent to have asked for callback)
       // Indirect agreement (customer proactively asks for callback — no agent ask needed)
       const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow"];
       const hasIndirectAgreement = recentCustomerMessages.some(msg =>
@@ -195,6 +222,19 @@ export const handler = async (
           console.log('[Intelligence] Customer already gave details — switching to SIGNOFF');
         }
       }
+
+      // STAGE REGRESSION PREVENTION: once we reach CONVERSION or SIGNOFF, never go back
+      const stageRank: Record<string, number> = { greeting: 0, discovery: 1, objection: 2, closing: 3, conversion: 4, signoff: 5 };
+      const prevHighStage = stageHighWaterMark[conversationId];
+      const currentRank = stageRank[callStage] ?? 0;
+      const prevRank = prevHighStage ? (stageRank[prevHighStage] ?? 0) : 0;
+
+      if (prevRank >= stageRank['conversion'] && currentRank < prevRank) {
+        // We were in CONVERSION/SIGNOFF before — don't regress
+        callStage = prevHighStage as any;
+        console.log(`[Intelligence] Stage regression prevented: kept ${callStage} (would have been ${Object.keys(stageRank).find(k => stageRank[k] === currentRank)})`);
+      }
+      stageHighWaterMark[conversationId] = currentRank > prevRank ? callStage : (prevHighStage || callStage);
 
       // Get most recent transcripts for AI context
       // Client transcripts are chronological: slice(-N) = most recent N
