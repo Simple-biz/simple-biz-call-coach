@@ -180,7 +180,7 @@ export const handler = async (
 
       // Direct agreement (requires agent to have asked for callback)
       // Indirect agreement (customer proactively asks for callback — no agent ask needed)
-      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow"];
+      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow", "call me at", "call me later", "here's my number", "my number is", "you can reach me", "reach me at", "send me a quick call", "give you my number", "give you my email"];
       const hasIndirectAgreement = recentCustomerMessages.some(msg =>
         indirectSignals.some(signal => msg.includes(signal))
       );
@@ -195,31 +195,42 @@ export const handler = async (
       );
       const hasAgreed = (hasDirectAgreement && askedCallback) || hasIndirectAgreement;
 
+      // ENTITY-BASED CONVERSION: If intelligence already extracted phone or email + name,
+      // the customer gave their info — that IS conversion regardless of verbal signals
+      const hasEntityPhone = (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0;
+      const hasEntityEmail = (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0;
+      const hasEntityName = (intelligence.entities?.people?.length ?? 0) > 0;
+      const entityBasedConversion = hasEntityName && (hasEntityPhone || hasEntityEmail) && askedCallback;
+
       console.log('[Intelligence] Conversion detection:', {
         customerMessages: recentCustomerMessages,
         hasAgreed,
+        entityBasedConversion,
         askedCallback,
         currentStage: callStage
       });
 
-      if (hasAgreed) {
+      if (hasAgreed || entityBasedConversion) {
         callStage = 'conversion';
-        console.log('[Intelligence] Customer agreed to callback — switching to CONVERSION stage');
+        console.log(`[Intelligence] Customer agreed to callback — switching to CONVERSION stage (verbal: ${hasAgreed}, entity: ${entityBasedConversion})`);
 
         // Check if customer already gave their details → force sign-off
         const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
-        const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/;
+        const numberPattern = /\d{5,}/; // Flexible: any 5+ digit sequence
         const timePattern = /after \d|before \d|around \d|at \d|at\d|\d+\s*pm|\d+\s*am|this afternoon|this evening|tomorrow|in the morning|tonight/i;
-        const alreadyToldYou = /already (said|gave|told)|i got it|yeah yeah/i;
+        const alreadyToldYou = /already (said|gave|told|talked)|i got it|yeah yeah|you have my|we already/i;
 
         const customerGaveName = recentCustomerMessages.some(msg => namePattern.test(msg));
         const customerGaveNumber = recentCustomerMessages.some(msg => numberPattern.test(msg));
         const customerGaveTime = recentCustomerMessages.some(msg => timePattern.test(msg));
         const customerFrustrated = recentCustomerMessages.some(msg => alreadyToldYou.test(msg));
 
-        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated) {
+        // Entity-based signoff: if intelligence extracted name + (phone or email), customer gave their details
+        const entitySignoff = hasEntityName && (hasEntityPhone || hasEntityEmail);
+        
+        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated || entitySignoff) {
           callStage = 'signoff' as any;
-          console.log('[Intelligence] Customer already gave details — switching to SIGNOFF');
+          console.log(`[Intelligence] Customer already gave details — switching to SIGNOFF (transcript: name=${customerGaveName} number=${customerGaveNumber} time=${customerGaveTime} frustrated=${customerFrustrated}, entity: ${entitySignoff})`);
         }
       }
 
