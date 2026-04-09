@@ -6,7 +6,7 @@ import { sendToConnection } from '../shared/apigw-client';
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  console.log('[StartConversation] Event:', JSON.stringify(event));
+  console.log('[StartConversation] connectionId:', event.requestContext.connectionId);
 
   const connectionId = event.requestContext.connectionId!;
   const domain = event.requestContext.domainName!;

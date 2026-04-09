@@ -5,7 +5,7 @@ import { getSecret } from '../shared/secrets-client';
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  console.log('[Connect] Event:', JSON.stringify(event));
+  console.log('[Connect] connectionId:', event.requestContext.connectionId);
 
   const connectionId = event.requestContext.connectionId!;
   const apiKey = event.queryStringParameters?.apiKey;

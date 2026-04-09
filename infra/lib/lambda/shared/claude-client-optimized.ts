@@ -478,15 +478,30 @@ export async function generateAITipStreaming(
     });
 
     // Use for-await to properly handle async onChunk (sendToConnection)
+    // Buffer chunks to reduce WebSocket messages (~5 tokens per flush)
+    let chunkBuffer = '';
     for await (const event of stream) {
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         const text = event.delta.text;
         fullText += text;
-        try {
-          await onChunk(text);
-        } catch (err) {
-          console.error('[Claude Stream] Error sending chunk:', err);
+        chunkBuffer += text;
+        // Flush every ~5 tokens (word boundaries or punctuation)
+        if (chunkBuffer.length >= 20 || /[.!?,\n]$/.test(chunkBuffer)) {
+          try {
+            await onChunk(chunkBuffer);
+          } catch (err) {
+            console.error('[Claude Stream] Error sending chunk:', err);
+          }
+          chunkBuffer = '';
         }
+      }
+    }
+    // Flush remaining buffer
+    if (chunkBuffer) {
+      try {
+        await onChunk(chunkBuffer);
+      } catch (err) {
+        console.error('[Claude Stream] Error sending final chunk:', err);
       }
     }
 

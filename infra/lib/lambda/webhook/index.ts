@@ -89,10 +89,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return response(400, { error: validationError });
   }
 
-  // Log raw payload keys to debug agent ID field
-  console.log(`[Webhook] Raw payload keys:`, Object.keys(payload));
-  console.log(`[Webhook] Raw payload:`, JSON.stringify(payload));
-
   const eventType = classifyEvent(payload);
   const callId = payload.uuid;
   // CallTools sends agent UUID as either app_user or app_user_id depending on context

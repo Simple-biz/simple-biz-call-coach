@@ -5,13 +5,12 @@ import { sendToConnection } from '../shared/apigw-client';
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  console.log('[Default] Event:', JSON.stringify(event));
-
   const connectionId = event.requestContext.connectionId!;
   const domain = event.requestContext.domainName!;
   const stage = event.requestContext.stage!;
 
   const body = JSON.parse(event.body || '{}');
+  console.log('[Default] connectionId:', connectionId, 'action:', body?.action);
 
   // Handle ping/pong for heartbeat
   if (body.action === 'ping') {

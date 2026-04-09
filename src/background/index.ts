@@ -116,23 +116,38 @@ let keepAliveInterval: number | null = null
 // AUTO-ANALYSIS LOOP — intelligence updates only (tips via streaming on click)
 // ============================================================================
 let autoAnalysisInterval: any = null;
+let autoAnalysisInFlight = false;
+let lastTranscriptCount = 0;
 const AUTO_ANALYSIS_INTERVAL_MS = 30000;
 
 function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
   console.log('🔄 [Background] Starting 30-second auto-analysis loop (intelligence only)');
+  lastTranscriptCount = extensionState.transcriptions?.length || 0;
+  autoAnalysisInFlight = false;
 
-  // Fire first analysis immediately so cache is warm for early tip requests
+  // Fire first analysis only if we have transcripts
   if (awsWebSocketService.isConnected() && extensionState.isRecording && extensionState.conversationId) {
-    console.log('⚡ [Background] Running immediate first auto-analysis to warm cache');
-    awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+    const currentCount = extensionState.transcriptions?.length || 0;
+    if (currentCount > 0) {
+      console.log('⚡ [Background] Running immediate first auto-analysis to warm cache');
+      awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+    }
   }
 
   autoAnalysisInterval = setInterval(() => {
     if (!awsWebSocketService.isConnected() || !extensionState.isRecording) return;
     if (!extensionState.conversationId) return;
-    // skipTip=true: intelligence only, no tip generation (tips are streamed on click)
-    awsWebSocketService.getIntelligence(extensionState.conversationId, true);
+    if (autoAnalysisInFlight) return; // Skip if previous request still pending
+
+    // Skip if no new transcripts since last analysis
+    const currentCount = extensionState.transcriptions?.length || 0;
+    if (currentCount <= lastTranscriptCount) return;
+    lastTranscriptCount = currentCount;
+
+    autoAnalysisInFlight = true;
+    awsWebSocketService.getIntelligence(extensionState.conversationId, true)
+      .finally(() => { autoAnalysisInFlight = false; });
   }, AUTO_ANALYSIS_INTERVAL_MS);
 }
 
@@ -457,7 +472,10 @@ chrome.runtime.onInstalled.addListener(async details => {
 
 chrome.runtime.onStartup.addListener(() => {
   console.log('🔄 [Background] Startup - initializing')
-  startKeepAlive()
+  // Only start keep-alive if there's an active call (restored from storage)
+  if (extensionState.isOnCall || extensionState.isRecording) {
+    startKeepAlive()
+  }
   // State restoration is handled at module level (runs on every SW wake-up)
 })
 
