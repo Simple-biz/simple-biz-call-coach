@@ -12,7 +12,7 @@ export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   const requestStartTime = Date.now();
-  console.log('[Transcript] Event:', JSON.stringify(event));
+  console.log('[Transcript] connectionId:', event.requestContext.connectionId, 'bodyLen:', event.body?.length || 0);
 
   const connectionId = event.requestContext.connectionId!;
   const domain = event.requestContext.domainName!;

@@ -530,7 +530,8 @@ export class AWSWebSocketService {
       this.updateStatus('reconnecting');
       this.reconnectAttempts++;
 
-      const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
+      const baseDelay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1);
+      const delay = Math.floor(baseDelay * (0.5 + Math.random())); // Add jitter to prevent thundering herd
       console.log(`🔄 [AWSWebSocket] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
 
       setTimeout(() => {
@@ -585,7 +586,7 @@ export class AWSWebSocketService {
           console.warn('⚠️ [AWSWebSocket] Heartbeat failed');
         });
       }
-    }, 30000); // 30 seconds
+    }, 540000); // 9 minutes (API Gateway idle timeout is 10 min)
   }
 
   private stopHeartbeat(): void {

@@ -94,7 +94,7 @@ export class WebSocketStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       bundling: {
         minify: true,
@@ -103,23 +103,15 @@ export class WebSocketStack extends cdk.Stack {
       }
     });
 
-    // Provisioned concurrency for $connect
-    const connectVersion = connectHandler.currentVersion;
-    const connectAlias = new lambda.Alias(this, 'ConnectHandlerLive', {
-      aliasName: 'live',
-      version: connectVersion,
-      provisionedConcurrentExecutions: 2
-    });
-
     // Lambda: $disconnect handler
     const disconnectHandler = new nodejs.NodejsFunction(this, 'DisconnectHandler', {
       entry: 'lib/lambda/disconnect/index.ts',
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
-      timeout: cdk.Duration.seconds(30),
-      memorySize: 256,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 128,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       bundling: {
         minify: true,
@@ -136,7 +128,7 @@ export class WebSocketStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(10),
       memorySize: 128,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       bundling: {
         minify: true,
@@ -151,9 +143,9 @@ export class WebSocketStack extends cdk.Stack {
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(60),
-      memorySize: 512,
+      memorySize: 256,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
@@ -167,15 +159,15 @@ export class WebSocketStack extends cdk.Stack {
       }
     });
 
-    // Lambda: Transcript Handler (CRITICAL - AI Processing)
+    // Lambda: Transcript Handler
     const transcriptHandler = new nodejs.NodejsFunction(this, 'TranscriptHandler', {
       entry: 'lib/lambda/transcript/index.ts',
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
       timeout: cdk.Duration.seconds(60),
-      memorySize: 1024,
+      memorySize: 256,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
@@ -187,14 +179,6 @@ export class WebSocketStack extends cdk.Stack {
         sourceMap: true,
         externalModules: ['@aws-sdk/*']
       }
-    });
-
-    // Provisioned concurrency for transcript handler
-    const transcriptVersion = transcriptHandler.currentVersion;
-    const transcriptAlias = new lambda.Alias(this, 'TranscriptHandlerLive', {
-      aliasName: 'live',
-      version: transcriptVersion,
-      provisionedConcurrentExecutions: 5
     });
 
     // Lambda: End Conversation
@@ -205,7 +189,7 @@ export class WebSocketStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
@@ -220,7 +204,6 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     // Lambda: Intelligence Handler (Conversation Analysis)
-    // Memory bumped to 1024MB for faster CPU (Claude API calls are CPU-bound on JSON parsing)
     const intelligenceHandler = new nodejs.NodejsFunction(this, 'IntelligenceHandler', {
       entry: 'lib/lambda/intelligence/index.ts',
       handler: 'handler',
@@ -228,7 +211,7 @@ export class WebSocketStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 1024,
       environment: sharedEnv,
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       vpc,
       vpcSubnets: {
@@ -240,14 +223,6 @@ export class WebSocketStack extends cdk.Stack {
         sourceMap: true,
         externalModules: ['@aws-sdk/*']
       }
-    });
-
-    // Provisioned concurrency for intelligence handler (1 instance for quick response)
-    const intelligenceVersion = intelligenceHandler.currentVersion;
-    const intelligenceAlias = new lambda.Alias(this, 'IntelligenceHandlerLive', {
-      aliasName: 'live',
-      version: intelligenceVersion,
-      provisionedConcurrentExecutions: 1
     });
 
     // Grant DynamoDB permissions
@@ -275,7 +250,7 @@ export class WebSocketStack extends cdk.Stack {
       apiName: 'devassist-websocket-api',
       description: 'Real-time AI coaching WebSocket API',
       connectRouteOptions: {
-        integration: new integrations.WebSocketLambdaIntegration('ConnectIntegration', connectAlias)
+        integration: new integrations.WebSocketLambdaIntegration('ConnectIntegration', connectHandler)
       },
       disconnectRouteOptions: {
         integration: new integrations.WebSocketLambdaIntegration('DisconnectIntegration', disconnectHandler)
@@ -291,7 +266,7 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     this.webSocketApi.addRoute('transcript', {
-      integration: new integrations.WebSocketLambdaIntegration('TranscriptIntegration', transcriptAlias)
+      integration: new integrations.WebSocketLambdaIntegration('TranscriptIntegration', transcriptHandler)
     });
 
     this.webSocketApi.addRoute('endConversation', {
@@ -299,7 +274,7 @@ export class WebSocketStack extends cdk.Stack {
     });
 
     this.webSocketApi.addRoute('getIntelligence', {
-      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceAlias),
+      integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceHandler),
       returnResponse: true,
     });
 
@@ -309,8 +284,8 @@ export class WebSocketStack extends cdk.Stack {
       stageName: 'production',
       autoDeploy: true,
       throttle: {
-        rateLimit: 10000,
-        burstLimit: 5000
+        rateLimit: 100,
+        burstLimit: 50
       }
     });
 
@@ -324,7 +299,7 @@ export class WebSocketStack extends cdk.Stack {
       ]
     });
 
-    [transcriptHandler, transcriptAlias, endConversationHandler, defaultHandler, startConversationHandler, intelligenceHandler, intelligenceAlias].forEach(fn => {
+    [transcriptHandler, endConversationHandler, defaultHandler, startConversationHandler, intelligenceHandler].forEach(fn => {
       fn.addToRolePolicy(postToConnectionPolicy);
     });
 
@@ -350,7 +325,7 @@ export class WebSocketStack extends cdk.Stack {
         WEBSOCKET_API_STAGE: 'production',
         AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
       },
-      tracing: lambda.Tracing.ACTIVE,
+      tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
       bundling: {
         minify: true,

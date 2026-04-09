@@ -1,5 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { DynamoDBClient, PutItemCommand, GetItemCommand, QueryCommand, ScanCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, PutItemCommand, GetItemCommand, QueryCommand } from '@aws-sdk/client-dynamodb';
 import { sendToConnection, WebSocketMessage } from '../shared/apigw-client';
 import { getSecret } from '../shared/secrets-client';
 
@@ -88,10 +88,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     console.warn('[Webhook] Validation failed:', validationError);
     return response(400, { error: validationError });
   }
-
-  // Log raw payload keys to debug agent ID field
-  console.log(`[Webhook] Raw payload keys:`, Object.keys(payload));
-  console.log(`[Webhook] Raw payload:`, JSON.stringify(payload));
 
   const eventType = classifyEvent(payload);
   const callId = payload.uuid;
@@ -204,11 +200,9 @@ async function broadcastToAgent(
   callId: string,
   payload: CallToolsCallPayload
 ): Promise<number> {
-  // MVP: Broadcast to ALL connected extensions (agentId matching deferred to v2)
-  // This works because typically only 1 agent uses the extension at a time
+  // Query only agent-specific connections — no broadcast fallback
   let connectionIds: string[];
   try {
-    // First try agent-specific query
     const agentResult = await dynamoClient.send(new QueryCommand({
       TableName: CONNECTIONS_TABLE,
       IndexName: 'agentId-index',
@@ -221,19 +215,6 @@ async function broadcastToAgent(
     connectionIds = (agentResult.Items || [])
       .map(item => item.connectionId?.S)
       .filter((id): id is string => !!id);
-
-    // If no agent-specific connections found, broadcast to all connections
-    if (connectionIds.length === 0) {
-      console.log(`[Webhook] No connections for agent ${agentId}, broadcasting to all`);
-      const allResult = await dynamoClient.send(new ScanCommand({
-        TableName: CONNECTIONS_TABLE,
-        ProjectionExpression: 'connectionId',
-      }));
-
-      connectionIds = (allResult.Items || [])
-        .map(item => item.connectionId?.S)
-        .filter((id): id is string => !!id);
-    }
   } catch (error) {
     console.error('[Webhook] Error querying connections:', error);
     return 0;

@@ -5,7 +5,7 @@ import { deleteConnection } from '../shared/dynamo-client';
 export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
-  console.log('[Disconnect] Event:', JSON.stringify(event));
+  console.log('[Disconnect] connectionId:', event.requestContext.connectionId);
 
   const connectionId = event.requestContext.connectionId!;
 

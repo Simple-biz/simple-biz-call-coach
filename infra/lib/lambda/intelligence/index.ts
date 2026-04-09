@@ -29,11 +29,11 @@ export const handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResult> => {
   const requestStartTime = Date.now();
-  console.log('[Intelligence] Event:', JSON.stringify(event));
-
   const connectionId = event.requestContext.connectionId!;
   const domain = event.requestContext.domainName!;
   const stage = event.requestContext.stage!;
+
+  console.log('[Intelligence] connectionId:', connectionId, 'bodyLen:', event.body?.length || 0);
 
   try {
     // Get connection info
