@@ -10,6 +10,12 @@ import { getCachedIntelligence, setCachedIntelligence } from './cache';
 // Track previous AI suggestions per conversation (Lambda memory — resets on cold start)
 const previousSuggestionsCache: Record<string, string[]> = {};
 
+// Track highest stage reached per conversation — never regress from CONVERSION/SIGNOFF
+const stageHighWaterMark: Record<string, string> = {};
+
+// Track established facts per conversation — prevents repeating questions about things already discussed
+const conversationFacts: Record<string, Set<string>> = {};
+
 /**
  * IntelligenceHandler Lambda Function
  *
@@ -147,13 +153,37 @@ export const handler = async (
       const recentCustomerMessages = recentMsgs
         .filter(t => t.speaker === 'caller')
         .map(t => t.text.toLowerCase());
-      // Direct agreement (requires agent to have asked for callback)
+
+      // Objection phrases — if customer says these AFTER a short "yeah/okay", it's not real agreement
+      const objectionPhrases = ['already have', 'i don\'t know', 'not sure', 'i don\'t need', 'not interested', 'i\'m good', 'no thanks', 'my developer', 'don\'t think', 'already said', 'already told'];
+
+      // Only check LAST 3 customer messages for direct agreement (avoids stale filler words)
+      const last3CustomerMsgs = recentCustomerMessages.slice(-3);
       const directSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
-      const hasDirectAgreement = recentCustomerMessages.some(msg =>
-        directSignals.some(signal => msg.includes(signal))
-      );
+
+      // Smart agreement detection: filter out filler "yeah/okay" followed by objections
+      let hasDirectAgreement = false;
+      for (let i = 0; i < last3CustomerMsgs.length; i++) {
+        const msg = last3CustomerMsgs[i];
+        const isAgreement = directSignals.some(signal => msg.includes(signal));
+        if (!isAgreement) continue;
+
+        // If this message itself contains objection language → not real agreement
+        if (objectionPhrases.some(p => msg.includes(p))) continue;
+
+        // Short filler (≤5 words) like "Yeah." — only counts if NO later messages contain objections
+        if (msg.split(/\s+/).length <= 5) {
+          const laterMsgs = last3CustomerMsgs.slice(i + 1);
+          if (laterMsgs.some(m => objectionPhrases.some(p => m.includes(p)))) continue;
+        }
+
+        hasDirectAgreement = true;
+        break;
+      }
+
+      // Direct agreement (requires agent to have asked for callback)
       // Indirect agreement (customer proactively asks for callback — no agent ask needed)
-      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow"];
+      const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow", "call me at", "call me later", "here's my number", "my number is", "you can reach me", "reach me at", "send me a quick call", "give you my number", "give you my email"];
       const hasIndirectAgreement = recentCustomerMessages.some(msg =>
         indirectSignals.some(signal => msg.includes(signal))
       );
@@ -168,38 +198,128 @@ export const handler = async (
       );
       const hasAgreed = (hasDirectAgreement && askedCallback) || hasIndirectAgreement;
 
+      // ENTITY-BASED CONVERSION: If intelligence already extracted phone or email + name,
+      // the customer gave their info — that IS conversion regardless of verbal signals
+      const hasEntityPhone = (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0;
+      const hasEntityEmail = (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0;
+      const hasEntityName = (intelligence.entities?.people?.length ?? 0) > 0;
+      const entityBasedConversion = hasEntityName && (hasEntityPhone || hasEntityEmail) && askedCallback;
+
       console.log('[Intelligence] Conversion detection:', {
         customerMessages: recentCustomerMessages,
         hasAgreed,
+        entityBasedConversion,
         askedCallback,
         currentStage: callStage
       });
 
-      if (hasAgreed) {
+      if (hasAgreed || entityBasedConversion) {
         callStage = 'conversion';
-        console.log('[Intelligence] Customer agreed to callback — switching to CONVERSION stage');
+        console.log(`[Intelligence] Customer agreed to callback — switching to CONVERSION stage (verbal: ${hasAgreed}, entity: ${entityBasedConversion})`);
 
         // Check if customer already gave their details → force sign-off
         const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
-        const numberPattern = /\d{3}[-.\s]?\d{3}[-.\s]?\d{4}|\d{10}/;
+        const numberPattern = /\d{5,}/; // Flexible: any 5+ digit sequence
         const timePattern = /after \d|before \d|around \d|at \d|at\d|\d+\s*pm|\d+\s*am|this afternoon|this evening|tomorrow|in the morning|tonight/i;
-        const alreadyToldYou = /already (said|gave|told)|i got it|yeah yeah/i;
+        const alreadyToldYou = /already (said|gave|told|talked)|i got it|yeah yeah|you have my|we already/i;
 
         const customerGaveName = recentCustomerMessages.some(msg => namePattern.test(msg));
         const customerGaveNumber = recentCustomerMessages.some(msg => numberPattern.test(msg));
         const customerGaveTime = recentCustomerMessages.some(msg => timePattern.test(msg));
         const customerFrustrated = recentCustomerMessages.some(msg => alreadyToldYou.test(msg));
 
-        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated) {
+        // Entity-based signoff: if intelligence extracted name + (phone or email), customer gave their details
+        const entitySignoff = hasEntityName && (hasEntityPhone || hasEntityEmail);
+        
+        if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated || entitySignoff) {
           callStage = 'signoff' as any;
-          console.log('[Intelligence] Customer already gave details — switching to SIGNOFF');
+          console.log(`[Intelligence] Customer already gave details — switching to SIGNOFF (transcript: name=${customerGaveName} number=${customerGaveNumber} time=${customerGaveTime} frustrated=${customerFrustrated}, entity: ${entitySignoff})`);
         }
       }
+
+      // STAGE REGRESSION PREVENTION: once we reach CONVERSION or SIGNOFF, never go back
+      const stageRank: Record<string, number> = { greeting: 0, discovery: 1, objection: 2, closing: 3, conversion: 4, signoff: 5 };
+      const prevHighStage = stageHighWaterMark[conversationId];
+      const currentRank = stageRank[callStage] ?? 0;
+      const prevRank = prevHighStage ? (stageRank[prevHighStage] ?? 0) : 0;
+
+      if (prevRank >= stageRank['conversion'] && currentRank < prevRank) {
+        // We were in CONVERSION/SIGNOFF before — don't regress
+        callStage = prevHighStage as any;
+        console.log(`[Intelligence] Stage regression prevented: kept ${callStage} (would have been ${Object.keys(stageRank).find(k => stageRank[k] === currentRank)})`);
+      }
+      stageHighWaterMark[conversationId] = currentRank > prevRank ? callStage : (prevHighStage || callStage);
 
       // Get most recent transcripts for AI context
       // Client transcripts are chronological: slice(-N) = most recent N
       // DB transcripts are DESC: slice(0, N) then reverse for chronological
-      const contextWindow = 15;
+      const contextWindow = 20;
+
+      // ── Accumulate conversation facts ──
+      // These persist across tip requests within the same Lambda container
+      if (!conversationFacts[conversationId]) {
+        conversationFacts[conversationId] = new Set();
+      }
+      const facts = conversationFacts[conversationId];
+
+      // Website status from intelligence entities
+      if (intelligence.entities?.websiteStatus === 'has_website') {
+        facts.add('Customer ALREADY HAS a website — do NOT ask if they have one. Pivot to optimization/SEO.');
+      } else if (intelligence.entities?.websiteStatus === 'no_website') {
+        facts.add('Customer does NOT have a website — pitch building one.');
+      }
+
+      // Business identified
+      if (intelligence.entities?.businessNames?.length) {
+        facts.add(`Customer's business: ${intelligence.entities.businessNames.join(', ')}`);
+      }
+
+      // Customer expressed interest or objection via intents
+      if (intelligence.intents?.includes('not_interested')) {
+        facts.add('Customer expressed NOT INTERESTED — handle objections carefully, do not hard-sell.');
+      }
+      if (intelligence.intents?.includes('request_callback')) {
+        facts.add('Customer agreed to a callback — move to CONVERSION, collect details.');
+      }
+
+      // Key contact info collected
+      if ((intelligence.entities?.people?.length ?? 0) > 0) {
+        facts.add(`Customer name collected: ${intelligence.entities!.people!.join(', ')}`);
+      }
+      if ((intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0) {
+        facts.add(`Customer email collected: ${intelligence.entities!.contactInfo!.emails!.join(', ')}`);
+      }
+
+      // Scan transcript for agent already asking about website (detect repetition)
+      const allMessages = canSkipDb ? transcripts : transcripts.slice().reverse();
+      const agentAskedWebsite = allMessages.some(t =>
+        t.speaker === 'agent' && /do you (have|currently have) a website|is that something you('ve| have) been/i.test(t.text)
+      );
+      const customerAnsweredWebsite = allMessages.some(t =>
+        t.speaker === 'caller' && /already have a website|have a website|have a web|website.*(up|running)|got a website/i.test(t.text)
+      );
+      if (agentAskedWebsite && customerAnsweredWebsite) {
+        facts.add('Agent ALREADY ASKED about website and customer answered — do NOT ask again.');
+      }
+
+      // Agent already pitched SEO
+      const agentPitchedSEO = allMessages.some(t =>
+        t.speaker === 'agent' && /especially with seo|optimize websites|seo at super affordable/i.test(t.text)
+      );
+      if (agentPitchedSEO) {
+        facts.add('Agent ALREADY PITCHED SEO/optimization — do NOT repeat the same pitch.');
+      }
+
+      // Agent already asked for callback
+      const agentAskedCallback = allMessages.some(t =>
+        t.speaker === 'agent' && /would you mind if.*(bob|partner)|give you a quick call/i.test(t.text)
+      );
+      if (agentAskedCallback) {
+        facts.add('Agent ALREADY ASKED for callback — do NOT suggest asking again unless context changed.');
+      }
+
+      console.log(`[Intelligence] Conversation facts (${facts.size}):`, Array.from(facts));
+
       let recentTranscripts;
       if (canSkipDb) {
         recentTranscripts = transcripts.slice(-contextWindow);
@@ -222,6 +342,7 @@ export const handler = async (
         conversationSummary: intelligence.summary,
         transcriptCount,
         previousSuggestions: prevSuggestions,
+        conversationFacts: Array.from(facts),
         collectedInfo: {
           customerName: (intelligence.entities?.people?.length ?? 0) > 0,
           businessName: (intelligence.entities?.businessNames?.length ?? 0) > 0,

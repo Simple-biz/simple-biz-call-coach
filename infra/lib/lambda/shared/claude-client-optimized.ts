@@ -27,6 +27,7 @@ export interface AITipRequest {
   conversationSummary?: string;
   transcriptCount?: number;
   previousSuggestions?: string[];
+  conversationFacts?: string[];
   collectedInfo?: {
     customerName: boolean;
     businessName: boolean;
@@ -54,9 +55,13 @@ export interface AITipResponse {
 // MARK'S GOLDEN SCRIPTS - OPTIMIZED FOR CACHING
 // ============================================================================
 
-const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLEAN & INTENT-MATCHED)
 
-## GREETING (4 scripts)
+
+// ============================================================================
+// MARK'S GOLDEN SCRIPTS - SPLIT BY STAGE FOR FASTER INFERENCE
+// ============================================================================
+
+const SCRIPTS_GREETING = `## GREETING
 1. Basic Intro [ID: intro-basic]: "My name is [Agent], and my partner Bob and I are here; we're local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
    → USE WHEN: Customer asks "Who is this?" or "Who are you?" or at start of call
    → ALWAYS end the intro with a question so the agent has a natural follow-up.
@@ -65,16 +70,16 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 4. Quick Intro: "Real quick though, my name is [Agent], and my partner Bob and I are here; we're local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → ALWAYS end with a question.
 5. Bob Transition (skip name): "My partner Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
-   → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.
+   → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.`;
 
-## VALUE PROPOSITION (3 scripts)
+const SCRIPTS_VALUE_PROP = `## VALUE PROPOSITION
 1. Affordable Hook [ID: hook-affordable]: "We're just wondering if you're interested in building or updating your website, since we're super affordable. Just don't want you to miss out at all. Do you currently have a website?"
    → USE WHEN: Customer asks "What do you need?" or "I'm busy" or "What is this about?"
    → ALWAYS end with a question so the conversation keeps flowing.
 2. Active Listening: "Okay, yeah. That's why we're here... you said you're open to possibly updating if anything?"
-3. Local Emphasis: "That's why we're here, because we're just trying to keep everything local here in [Location]. What kind of business do you run?"
+3. Local Emphasis: "That's why we're here, because we're just trying to keep everything local here in [Location]. What kind of business do you run?"`;
 
-## OBJECTION HANDLING (9 scripts)
+const SCRIPTS_OBJECTION = `## OBJECTION HANDLING
 1. Have One/Busy [ID: obj-busy-or-have]: "You already got one though, or just busy right now to talk about it?"
    → USE WHEN: Customer says "We already have a website" or "I already have one" or "Not right now" or "Not at the moment"
    → DO NOT use when customer says "Not interested" or "I don't need a website" — see Respect Decline script below
@@ -87,9 +92,9 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 6. Digital Marketing Pivot: "Of course yeah. I was just about to say though [Name], we're a whole digital marketing company... and we can help you host, maintain or optimize it, especially with SEO. Would it be okay if my partner Bob gives you a quick call?"
 7. IP/Control Assurance: "Of course yeah. We definitely let our clienteles get full control of their own website. We believe in having it to all yourself and for your business. Would you mind if my partner Bob gives you a quick call to walk you through how that works?"
 8. Respect Decline: "No problem. I do appreciate you taking my call. Have a great day."
-   → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.
+   → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.`;
 
-## CLOSING (11 scripts)
+const SCRIPTS_CLOSING = `## CLOSING
 1. Ask Callback [ID: ask-callback]: "Would you mind if I can have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?"
    → USE WHEN: After delivering pitch or handling objections - goal is to secure callback
 2. Get Email: "What's your email?"
@@ -104,9 +109,9 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 11. Pricing Redirect: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?"
    → USE WHEN: Customer asks about pricing or cost. Do NOT give specific numbers — pricing details are Bob's job.
 12. Timeline Redirect: "My partner Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
-   → USE WHEN: Customer asks about how long it takes.
+   → USE WHEN: Customer asks about how long it takes.`;
 
-## AI RECEPTIONIST (when talking to an automated system or receptionist)
+const SCRIPTS_AI_RECEPTIONIST = `## AI RECEPTIONIST (when talking to an automated system or receptionist)
 → DO NOT use hardcoded scripts here. Respond NATURALLY based on what the receptionist says, using Mark's casual conversational tone ("of course yeah", "real quick though", "no worries").
 → GOAL: Get through to the owner/decision-maker, OR accept their callback offer and leave Bob's info.
 → GUIDELINES:
@@ -114,9 +119,9 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
   - If receptionist offers to arrange a callback → Accept it naturally, mention Bob handles the website details.
   - If no one is available → Leave a message naturally — Caesar called, Bob can be reached for a quick chat.
   - Match their energy. If they're formal, be polite. If they're casual, be casual.
-  - Keep it SHORT. Don't pitch the receptionist — they're not the decision-maker.
+  - Keep it SHORT. Don't pitch the receptionist — they're not the decision-maker.`;
 
-## ENGAGEMENT (follow-up questions for dry/short/unclear responses)
+const SCRIPTS_ENGAGEMENT = `## ENGAGEMENT (follow-up questions for dry/short/unclear responses)
 → USE WHEN: Customer gives a short, vague, or non-committal answer like "yeah", "I don't know", "maybe", "hmm", silence, or anything that doesn't clearly match another rule. The goal is to keep the conversation alive and learn more about their situation so you can guide them toward the callback.
 1. Discovery Question: "Do you currently have a website for your business, or is this something you've been thinking about setting up?"
 2. Pain Point Probe: "What's been holding you back from getting a website going? Is it the cost, the time, or just not knowing where to start?"
@@ -127,15 +132,53 @@ const MARKS_GOLDEN_SCRIPTS = `# MARK'S QUALITY SCRIPTS (27 PROVEN PATTERNS - CLE
 7. Not The Right Person: "No worries at all. Who would be the best person to talk to about the website? I can have Bob reach out to them directly."
 8. Email Deflection: "Of course, we can definitely send some info over. What's the best email for you? And just so Bob knows who to follow up with, what's your name?"
 9. How'd You Get My Number: "Great question — we're scouting small to medium local businesses in the area, so we just got your number off of Google. We're just reaching out to see if we can help."
-10. Skeptical/Scam Concern: "Totally understand the caution. We're a legit local company here in [Location]. We just work with small businesses to help them get online. No pressure at all."
+10. Skeptical/Scam Concern: "Totally understand the caution. We're a legit local company here in [Location]. We just work with small businesses to help them get online. No pressure at all."`;
 
-## CONVERSION (4 scripts)
-1. Collect Details: "Bob can give you a call later today — what's the best number and time to reach you at?"
-   → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for number).
-   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best number to reach you at?"
-2. Sign Off (Simple): "Bob will call you later at [time]. Thank you for your time, [Name]."
-3. Sign Off (Options): "We'll get back to you later. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
+const SCRIPTS_CONVERSION = `## CONVERSION
+1. Collect Details: "Bob can give you a call later today — what's the best time and email to reach you at?"
+   → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for details).
+   → ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number. Ask for email and callback time instead.
+   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best email to reach you at?"
+2. Sign Off (Simple): "Got it, [Name]. Bob will give you a call back [time]. Have a beautiful day and I'm super excited for you. Take care!"
+   → ⚠️ We already have the customer's phone number (we dialed them). Bob will CALL THEM BACK — do NOT say "call at your email". Email is only for sending additional info, NOT for calling.
+   → If customer gave email → "Bob will give you a call back and we'll send more info to your email. Have a beautiful day!"
+   → If customer gave a specific time → "Bob will call you back at [time]. Have a beautiful day!"
+   → If no specific time → "Bob will give you a call back later. Have a beautiful day and I'm super excited for you. Take care!"
+3. Sign Off (Options): "We'll give you a call back. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
 4. Sign Off (Excited): "Of course yeah, I'll talk to you later then. Have a beautiful day [Name] and I'm super excited for you. Take care."`;
+
+/**
+ * Returns only the script sections relevant to the current call stage.
+ * Always includes ENGAGEMENT (universal fallback) and RESPECT DECLINE (via objection).
+ * Adjacent stages are included to handle edge cases where stage detection is slightly off.
+ */
+function getScriptsForStage(stage: string): string {
+  const sections: string[] = ['# MARK\'S QUALITY SCRIPTS (STAGE-FILTERED)\n'];
+
+  switch (stage) {
+    case 'greeting':
+      sections.push(SCRIPTS_GREETING, SCRIPTS_VALUE_PROP, SCRIPTS_AI_RECEPTIONIST, SCRIPTS_ENGAGEMENT);
+      break;
+    case 'discovery':
+      sections.push(SCRIPTS_VALUE_PROP, SCRIPTS_OBJECTION, SCRIPTS_ENGAGEMENT);
+      break;
+    case 'objection':
+      sections.push(SCRIPTS_OBJECTION, SCRIPTS_CLOSING, SCRIPTS_ENGAGEMENT);
+      break;
+    case 'closing':
+      sections.push(SCRIPTS_OBJECTION, SCRIPTS_CLOSING, SCRIPTS_CONVERSION, SCRIPTS_ENGAGEMENT);
+      break;
+    case 'conversion':
+    case 'signoff':
+      sections.push(SCRIPTS_CONVERSION, SCRIPTS_CLOSING);
+      break;
+    default:
+      // Fallback: send objection + closing + engagement (most common need)
+      sections.push(SCRIPTS_OBJECTION, SCRIPTS_CLOSING, SCRIPTS_ENGAGEMENT);
+  }
+
+  return sections.join('\n\n');
+}
 
 // ============================================================================
 // ULTRA-COMPRESSED SYSTEM PROMPT (OPTIMIZED FOR SPEED)
@@ -183,7 +226,7 @@ CUSTOMER INTENT MATCHING RULES (PRIORITY ORDER):
    - OR the customer proactively says: "have Bob call me", "call me back", "they can call me", "have them call"
    - ⚠️ A casual "yeah" or "okay" at the START of a call (e.g. "yeah I have a minute") is NOT callback agreement — it's just the customer being polite. Only count it as agreement if it's clearly in response to a callback ask.
    → When truly agreed: switch to CONVERSION. Collect details. NEVER re-pitch.
-   → ⚠️ If customer gave a SPECIFIC TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best number to reach you at?" Do NOT ignore the time they gave.
+   → ⚠️ If customer gave a SPECIFIC TIME ("call tomorrow", "at 4pm", "after 5") → acknowledge the time: "Perfect, Bob will call you tomorrow at 4. What's the best email to reach you at?" Do NOT ignore the time they gave.
    → ⚠️ If customer said "another time", "I'm busy right now", or wants to schedule later WITHOUT giving a specific time → ask WHEN: "No problem at all — when works best for you?" Do NOT assume "later today".
 3. ⚠️ Customer is FRUSTRATEDor says agent is repeating/not answering ("you're going in circles", "you keep saying the same thing", "you already said that", "I already told you", "I'm done", "you're not listening", "not answering my question", "dancin' around", "runaround", "you didn't answer", "straight answer", "level with me") → STOP everything. Do NOT repeat any previous script. Say something like: "I hear you, Ray, and I apologize for that." Then pivot DIRECTLY to Ask Callback. If customer is ALSO asking a question → briefly acknowledge it and redirect to Bob.
 4. Customer asks about PRICING, COST, or TIMELINE → Always redirect to Bob in ONE smooth sentence that flows into the callback ask: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?" Do NOT give specific pricing numbers — that's Bob's job. If customer pushes again: "I totally understand. Bob handles all the pricing and he'll be straight with you — would it work if he calls you today?"
@@ -211,19 +254,25 @@ CRITICAL - AI ASSISTANT / RECEPTIONIST DETECTION:
 
 STAGE DETERMINATION:
 - ⚠️ If Stage field says CONVERSION → The customer already agreed. Do NOT downgrade to CLOSING or re-pitch.
-  - CONVERSION flow: Ask Name → Ask Business Name → Ask Number/Email → Sign Off. That's it. 4 steps max.
+  - CONVERSION flow: Ask Name → Ask Business Name → Ask Email/Callback Time → Sign Off. That's it. 4 steps max.
+  - ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number unless they volunteer a different one.
+  - ⚠️ ALWAYS acknowledge what the customer JUST SAID before transitioning to the next collection step. NEVER output a bare "And your name is?" with no lead-in.
+  - Example: Customer says "I think I need some improvements" → "That's great you're open to improvements — Bob can definitely help with that. And your name is?"
+  - Example: Customer gives name → "Perfect, [Name]. What's the best email to reach you at?"
+  - Example: Customer says "okay fine, just a quick call" → "Awesome, appreciate it. And your name is?"
   - ⚠️ CHECK the "COLLECTED INFO" section in the prompt. It tells you what the agent HAS and HAS NOT collected yet.
   - If customerName is NOT collected → Ask for their name FIRST using Confirm Name: "And your name is?"
   - If customerName IS collected but businessName is NOT → Ask: "And what's the name of your business?"
-  - If both name and business are collected but no number/email → USE Collect Details: "What's the best number and time to reach you at?"
-  - If ALL info is collected (name, business, phone/email) → Go straight to Sign Off. Do NOT ask for anything else.
+  - If both name and business are collected but no email → USE Collect Details: "What's the best email and time to reach you at?"
+  - If ALL info is collected (name, business, email) → Go straight to Sign Off. Do NOT ask for anything else.
   - ⚠️ If email is YES in COLLECTED INFO → Do NOT ask for email again. Move to Sign Off.
-  - ⚠️ If phoneNumber is YES in COLLECTED INFO → Do NOT ask for phone again. Move to Sign Off or ask for email only if missing.
+  - ⚠️ Do NOT ask for phone number — we already have it from the dialer. Only note it if the customer volunteers a different number.
   - If customer already stated their name (e.g. "It's Maria", "My name is...") → do NOT ask for name again. Move to next detail.
   - If customer already gave callback time (e.g. "call after 4", "this afternoon") → do NOT ask when to call. Move to Sign Off.
   - If customer says "I already said yes", "I already gave you that", "I already told you" → USE Sign Off IMMEDIATELY.
   - ⚠️ ALSO read the transcript — if the customer just gave info (phone, email, name) in their LATEST message, acknowledge it and move to the NEXT step, do NOT re-ask what they just said.
-- ⚠️ If Stage field says SIGNOFF → Output ONLY a Sign Off script. Example: "Got it, [Name]! Bob will call you [time]. Have a beautiful day and I'm super excited for you. Take care!"
+- ⚠️ If Stage field says SIGNOFF → Output ONLY a Sign Off script. Example: "Got it, [Name]! Bob will give you a call back [time]. Have a beautiful day and I'm super excited for you. Take care!"
+   → ⚠️ Bob will CALL THEM BACK (we have their phone number). Do NOT say "call at your email" — email is for sending info, not for calling.
 - For all other stages, you MAY override if the transcript clearly shows a different stage:
   - GREETING: First 1-2 exchanges, no pitch given yet
   - VALUE_PROP: Intro done, customer asking what you want, pitch not fully delivered
@@ -233,9 +282,10 @@ STAGE DETERMINATION:
 
 SCRIPT SELECTION RULES:
 - ALWAYS respond like a real person having a conversation — not a robot reading a script.
-- Every response should have TWO parts:
-  1. A SHORT natural acknowledgment (1 sentence, max 15 words) that shows you HEARD what the customer just said. Reference their actual words/question.
+- Every response MUST have TWO parts:
+  1. A SHORT natural acknowledgment (1 sentence, max 15 words) that directly references what the customer JUST SAID in their LATEST message. READ their last message in the transcript and respond to it.
   2. Then the golden script that best fits the situation.
+- ⚠️ If the customer made a STATEMENT (not a question), still acknowledge it. E.g. "I need improvements" → "That's great you're open to improvements." E.g. "My website is fine" → "Glad to hear it's working well."
 - The acknowledgment makes it feel like a real conversation. The golden script drives toward the callback.
 
 EXAMPLES OF NATURAL FLOW:
@@ -261,7 +311,8 @@ GOOD (redirect to Bob):
 - Do NOT give specific pricing numbers, timelines, or technical feature details — those are ALL Bob's job. The agent redirects to Bob for anything detailed.
 - Keep the value prop simple: "We're super affordable, just don't want you to miss out at all."
 - ⚠️ EVERY tip MUST end with a QUESTION or a callback ask. Never leave the agent with a dead-end statement.
-- ⚠️ If the customer ASKS a question ("when will we schedule?", "what's your website?", "how does this work?"), your script MUST acknowledge/answer their question FIRST, then flow into the golden script. Do NOT ignore what they just asked. The agent should always have something to say next after delivering the script. If the script doesn't end with a question, ADD one (e.g. "Do you currently have a website?" or "Would a quick call work?").
+- ⚠️ If the customer ASKS a question ("when will we schedule?", "what's your website?", "how does this work?", "who's Bob?"), your script MUST acknowledge/answer their question FIRST, then flow into the golden script. Do NOT ignore what they just asked. The agent should always have something to say next after delivering the script. If the script doesn't end with a question, ADD one (e.g. "Do you currently have a website?" or "Would a quick call work?").
+- ⚠️ LATEST EXCHANGE PRIORITY: Look at the "LATEST EXCHANGE" section in the prompt. Your tip MUST respond to what's happening THERE — not to something said 5 messages ago. If the customer just asked a question, answer IT. If the customer just gave info, acknowledge IT. Do NOT generate a tip for an older part of the conversation.
 - Goal: Build rapport → secure callback agreement
 
 ⚠️ ANTI-REPETITION (CRITICAL — READ THIS):
@@ -273,6 +324,20 @@ GOOD (redirect to Bob):
 - If the customer has MOVED ON to a new question but you're still answering the old one → you are FAILING. Answer the NEW question.
 - RULE: Read the customer's LATEST message. What are they asking RIGHT NOW? Answer THAT, not what they asked 3 messages ago.
 - If you cannot find a different script → use Ask Callback as the universal fallback. It always advances the conversation.
+
+⚠️ ESCALATION — REPEATED OBJECTIONS (CRITICAL):
+- If the agent ALREADY pitched SEO/optimization/revamp AND the customer is STILL saying "I already have a website" or "my developer handles it" or "I don't know" → the pitch DID NOT WORK. Do NOT repeat any SEO/optimization script.
+- Instead: pivot to a SOFTER Ask Callback. Example: "No worries at all — my partner Bob can go over everything with you in more detail. Would you be open to a quick call from him later?"
+- If you've already pitched SEO AND already asked for callback AND the customer is STILL hesitant → use Respect Decline. The customer is not interested. End gracefully.
+- NEVER repeat the same pitch more than once in a conversation. If it didn't work the first time, a different approach is needed.
+
+⚠️ ESTABLISHED FACTS AWARENESS (CRITICAL):
+- READ the "ESTABLISHED FACTS" section in the prompt. These are things ALREADY discussed or detected in this call.
+- If a fact says "Customer ALREADY HAS a website" → NEVER suggest asking "Do you have a website?" — instead pivot to SEO/optimization or Ask Callback.
+- If a fact says "Agent ALREADY ASKED about website" → the website question is DONE. Do NOT repeat it.
+- If a fact says "Agent ALREADY PITCHED SEO" → do NOT suggest SEO Pivot or SEO Affirmation again.
+- If a fact says "Agent ALREADY ASKED for callback" → only suggest callback ask again if context significantly changed (e.g. new objection handled).
+- ⚠️ IDENTITY: We are "local website designers" — NOT a "digital marketing company", "marketing agency", or "web dev agency". Always use: "my partner Bob and I are local website designers."
 
 ⚠️ FRUSTRATION DETECTION:
 - Frustrated phrases: "you're repeating", "you already said that", "I'm done", "going in circles", "not listening", "I already told you", "not answering", "didn't answer", "dancin' around", "runaround", "straight answer", "level with me", "same thing", "waste of time"
@@ -308,8 +373,7 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
         },
         {
           type: 'text',
-          text: MARKS_GOLDEN_SCRIPTS,
-          cache_control: { type: 'ephemeral' }
+          text: getScriptsForStage(request.callStage),
         }
       ],
       messages: [
@@ -405,8 +469,7 @@ export async function generateAITipStreaming(
         },
         {
           type: 'text' as const,
-          text: MARKS_GOLDEN_SCRIPTS,
-          cache_control: { type: 'ephemeral' as const }
+          text: getScriptsForStage(request.callStage),
         }
       ],
       messages: [
@@ -479,14 +542,36 @@ function buildCompressedPrompt(request: AITipRequest): string {
     parts.push(`\nCOLLECTED INFO (what the agent has/hasn't gathered):`);
     parts.push(`  customerName: ${info.customerName ? 'YES' : 'NO — ask for it'}`);
     parts.push(`  businessName: ${info.businessName ? 'YES' : 'NO — ask for it'}`);
-    parts.push(`  phoneNumber: ${info.phoneNumber ? 'YES' : 'NO'}`);
-    parts.push(`  email: ${info.email ? 'YES' : 'NO'}`);
+    parts.push(`  phoneNumber: ALREADY HAVE IT (we dialed them) — do NOT ask for phone`);
+    parts.push(`  email: ${info.email ? 'YES' : 'NO — ask for it'}`);
   }
 
-  // Include recent conversation (last 10-15 messages with speaker labels)
-  // This gives Claude proper context to understand the conversation flow
+  // Include conversation facts — established truths about this call
+  if (request.conversationFacts?.length) {
+    parts.push(`\n⚠️ ESTABLISHED FACTS (do NOT contradict or re-ask these):`);
+    for (const fact of request.conversationFacts) {
+      parts.push(`  • ${fact}`);
+    }
+  }
+
+  // Include recent conversation with speaker labels
+  // CRITICAL: Keep the MOST RECENT messages (truncate from the START, not the end)
+  // so the model always sees what just happened, not ancient history
   if (request.recentTranscript) {
-    parts.push(`\nRecent Conversation:\n${request.recentTranscript.substring(0, 1800)}`);
+    const transcript = request.recentTranscript;
+    const maxLen = 2200;
+    const truncated = transcript.length > maxLen 
+      ? '...\n' + transcript.substring(transcript.length - maxLen)
+      : transcript;
+    parts.push(`\nRecent Conversation:\n${truncated}`);
+    
+    // Extract the LAST 3 lines as a highlighted "LATEST EXCHANGE" so the model
+    // doesn't get lost in older context and always responds to what JUST happened
+    const lines = transcript.trim().split('\n');
+    if (lines.length > 3) {
+      const latest = lines.slice(-3).join('\n');
+      parts.push(`\n⚠️ LATEST EXCHANGE (your tip MUST respond to THIS — not older messages):\n${latest}`);
+    }
   }
 
   // Include summary for additional context
