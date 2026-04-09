@@ -1271,7 +1271,11 @@ async function handleCallEnd(tabId?: number) {
       console.warn('⚠️ [Background] Offscreen document may already be closed')
     })
 
-    // 2. Disconnect AI Backend
+    // 2. Grace period for Deepgram to flush final audio chunk
+    console.log('⏳ [Background] Waiting 2.5s for Deepgram to flush final transcripts...')
+    await new Promise(resolve => setTimeout(resolve, 2500))
+
+    // 3. Disconnect AI Backend
     await disconnectAIBackend()
 
     // 3. Close offscreen document
