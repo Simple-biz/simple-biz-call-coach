@@ -116,11 +116,11 @@ let keepAliveInterval: number | null = null
 // AUTO-ANALYSIS LOOP — intelligence updates only (tips via streaming on click)
 // ============================================================================
 let autoAnalysisInterval: any = null;
-const AUTO_ANALYSIS_INTERVAL_MS = 10000;
+const AUTO_ANALYSIS_INTERVAL_MS = 30000;
 
 function startAutoAnalysisLoop() {
   if (autoAnalysisInterval) clearInterval(autoAnalysisInterval);
-  console.log('🔄 [Background] Starting 10-second auto-analysis loop (intelligence only)');
+  console.log('🔄 [Background] Starting 30-second auto-analysis loop (intelligence only)');
 
   // Fire first analysis immediately so cache is warm for early tip requests
   if (awsWebSocketService.isConnected() && extensionState.isRecording && extensionState.conversationId) {

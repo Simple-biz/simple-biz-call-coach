@@ -1,4 +1,5 @@
 import { ApiGatewayManagementApiClient, PostToConnectionCommand, DeleteConnectionCommand } from '@aws-sdk/client-apigatewaymanagementapi';
+import { deleteConnection } from './dynamo-client';
 
 let apigwClient: ApiGatewayManagementApiClient | null = null;
 
@@ -30,16 +31,19 @@ export async function sendToConnection(
       Data: JSON.stringify(message)
     }));
 
-    console.log(`[API Gateway] Message sent to ${connectionId}:`, message.type);
     return true;
   } catch (error: any) {
     if (error.statusCode === 410) {
-      // Connection is stale (GoneException)
-      console.warn(`[API Gateway] Connection ${connectionId} is stale, removing...`);
+      console.warn(`[API Gateway] Connection ${connectionId} is stale, cleaning up`);
+      try {
+        await deleteConnection(connectionId);
+      } catch (cleanupErr) {
+        console.error(`[API Gateway] Failed to delete stale connection ${connectionId}:`, cleanupErr);
+      }
       return false;
     }
 
-    console.error(`[API Gateway] Error sending message to ${connectionId}:`, error);
+    console.error(`[API Gateway] Error sending to ${connectionId}:`, error);
     throw error;
   }
 }

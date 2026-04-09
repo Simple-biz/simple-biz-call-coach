@@ -585,7 +585,7 @@ export class AWSWebSocketService {
           console.warn('⚠️ [AWSWebSocket] Heartbeat failed');
         });
       }
-    }, 30000); // 30 seconds
+    }, 60000); // 60 seconds
   }
 
   private stopHeartbeat(): void {
