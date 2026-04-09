@@ -3,7 +3,8 @@ const API_KEY = process.env.ANTHROPIC_API_KEY;
 if (!API_KEY) { console.error('Set ANTHROPIC_API_KEY env var'); process.exit(1); }
 
 const WS_URL = 'wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production';
-const BACKEND_API_KEY = 'devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa';
+const BACKEND_API_KEY = process.env.BACKEND_API_KEY;
+if (!BACKEND_API_KEY) { console.error('Set BACKEND_API_KEY env var'); process.exit(1); }
 const MODEL = 'claude-haiku-4-5-20251001';
 
 const CUSTOMER_PROMPT = `You are Hector, a 44-year-old man who owns a taco truck called "Hector's Tacos" in San Antonio, TX. You're ON the taco truck right now during lunch rush.

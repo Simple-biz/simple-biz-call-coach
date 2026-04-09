@@ -26,8 +26,11 @@ from datetime import datetime, timedelta
 # CONFIG
 # ============================================================================
 
-WS_URL = "wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production"
-API_KEY = "devassist-cce03814ca61352a852641fe9bb4542877975dd1d65d353ba0459add57c15efa"
+WS_URL = os.environ.get("BACKEND_WS_URL", "wss://wu4pgdpdv9.execute-api.us-east-1.amazonaws.com/production")
+API_KEY = os.environ.get("BACKEND_API_KEY", "")
+if not API_KEY:
+    print("ERROR: Set BACKEND_API_KEY environment variable")
+    sys.exit(1)
 
 # ============================================================================
 # TEST CASES
