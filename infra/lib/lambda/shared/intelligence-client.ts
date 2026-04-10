@@ -1,5 +1,4 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { Transcript } from './db-client';
 import { getSecret } from './secrets-client';
 
 /**
@@ -23,6 +22,12 @@ async function getAnthropicClient(): Promise<Anthropic> {
 const HAIKU_MODEL = process.env.CLAUDE_HAIKU_MODEL || 'claude-haiku-4-5-20250929';
 
 // Intelligence data structures
+export interface IntelligenceTranscript {
+  speaker: 'agent' | 'caller' | string;
+  text: string;
+  timestamp?: Date | number;
+}
+
 export interface ConversationIntelligence {
   sentiment: {
     label: 'positive' | 'neutral' | 'negative';
@@ -53,6 +58,7 @@ export interface ExtractedEntities {
   locations: string[];
   dates: string[];
   people: string[];
+  websiteStatus?: 'has_website' | 'no_website' | 'unknown';
 }
 
 export interface IntelligenceResult {
@@ -69,7 +75,7 @@ export interface IntelligenceResult {
  */
 export async function generateConversationIntelligence(params: {
   conversationId: string;
-  transcripts: Transcript[];
+  transcripts: IntelligenceTranscript[];
 }): Promise<IntelligenceResult> {
   const { conversationId, transcripts } = params;
 
@@ -197,7 +203,8 @@ Return ONLY the JSON object, no other text.`;
         },
         locations: intelligenceData.entities?.locations || [],
         dates: intelligenceData.entities?.dates || [],
-        people: intelligenceData.entities?.people || []
+        people: intelligenceData.entities?.people || [],
+        websiteStatus: intelligenceData.entities?.websiteStatus || 'unknown'
       },
       model: HAIKU_MODEL
     };
@@ -237,7 +244,8 @@ Return ONLY the JSON object, no other text.`;
         },
         locations: [],
         dates: [],
-        people: []
+        people: [],
+        websiteStatus: 'unknown'
       },
       model: HAIKU_MODEL
     };

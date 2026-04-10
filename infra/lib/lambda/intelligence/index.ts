@@ -2,7 +2,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConnection } from '../shared/dynamo-client';
 import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
-import { generateConversationIntelligence } from '../shared/intelligence-client';
+import { generateConversationIntelligence, IntelligenceResult, IntelligenceTranscript } from '../shared/intelligence-client';
 import { generateAITip, generateAITipStreaming } from '../shared/claude-client-optimized';
 import { sendToConnection } from '../shared/apigw-client';
 import { getCachedIntelligence, setCachedIntelligence } from './cache';
@@ -58,12 +58,27 @@ export const handler = async (
 
     // 1. Check if we can use cached intelligence (for manual tip requests)
     const cached = (!skipTip || skipIntelligence) ? getCachedIntelligence(conversationId) : null;
+    const fallbackIntelligence: IntelligenceResult = {
+      sentiment: { label: 'neutral', score: 0, averageScore: 0 },
+      intents: [],
+      topics: [],
+      summary: 'Intelligence skipped or cached',
+      entities: {
+        businessNames: [],
+        contactInfo: { emails: [], phoneNumbers: [], urls: [] },
+        locations: [],
+        dates: [],
+        people: [],
+        websiteStatus: 'unknown'
+      },
+      model: 'none'
+    };
 
     // FAST PATH: Manual tip with cached intelligence AND client-provided transcripts
     // Skip DB query entirely — saves ~200-400ms
     const canSkipDb = (!skipTip || skipIntelligence) && cached && clientTranscripts && clientTranscripts.length > 0;
 
-    let transcripts: Array<{ speaker: string; text: string; timestamp?: number }>;
+    let transcripts: IntelligenceTranscript[];
     let transcriptCount: number;
 
     if (canSkipDb) {
@@ -98,14 +113,7 @@ export const handler = async (
 
     const intelligencePromise = shouldRunIntelligence 
       ? generateConversationIntelligence({ conversationId, transcripts })
-      : Promise.resolve(cached || {
-          sentiment: { label: 'neutral', score: 0, averageScore: 0 },
-          intents: [],
-          topics: [],
-          summary: 'Intelligence skipped or cached',
-          entities: { businessNames: [], contactInfo: { emails: [], phoneNumbers: [], urls: [] }, locations: [], dates: [], people: [] },
-          model: 'none'
-        });
+      : Promise.resolve(cached || fallbackIntelligence);
 
     if (cached) cacheHit = true;
 
