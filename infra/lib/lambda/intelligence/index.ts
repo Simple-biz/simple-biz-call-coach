@@ -2,7 +2,12 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { getConnection } from '../shared/dynamo-client';
 import { getRecentTranscriptsWithCount, saveAIRecommendation } from '../shared/postgres-client';
-import { generateConversationIntelligence, IntelligenceResult, IntelligenceTranscript } from '../shared/intelligence-client';
+import {
+  generateConversationIntelligence,
+  IntelligenceResult,
+  IntelligenceTranscript,
+  ClientIntelligenceSnapshot
+} from '../shared/intelligence-client';
 import { generateAITip, generateAITipStreaming } from '../shared/claude-client-optimized';
 import { sendToConnection } from '../shared/apigw-client';
 import { getCachedIntelligence, setCachedIntelligence } from './cache';
@@ -52,12 +57,19 @@ export const handler = async (
 
     // Parse message body (optional parameters)
     const body = JSON.parse(event.body || '{}');
-    const { limit = 50, skipTip = false, skipIntelligence = false, transcripts: clientTranscripts } = body;
+    const {
+      limit = 50,
+      skipTip = false,
+      skipIntelligence = false,
+      transcripts: clientTranscripts,
+      clientIntelligence: clientIntelligenceSnapshot
+    } = body;
 
-    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip}, skipIntelligence: ${skipIntelligence}, clientTranscripts: ${clientTranscripts?.length || 0})`);
+    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip}, skipIntelligence: ${skipIntelligence}, clientTranscripts: ${clientTranscripts?.length || 0}, clientSnapshot: ${!!clientIntelligenceSnapshot})`);
 
     // 1. Check if we can use cached intelligence (for manual tip requests)
     const cached = (!skipTip || skipIntelligence) ? getCachedIntelligence(conversationId) : null;
+    const clientIntelligence = normalizeClientIntelligence(clientIntelligenceSnapshot);
     const fallbackIntelligence: IntelligenceResult = {
       sentiment: { label: 'neutral', score: 0, averageScore: 0 },
       intents: [],
@@ -73,10 +85,11 @@ export const handler = async (
       },
       model: 'none'
     };
+    const baseIntelligence = cached || clientIntelligence || fallbackIntelligence;
 
-    // FAST PATH: Manual tip with cached intelligence AND client-provided transcripts
-    // Skip DB query entirely — saves ~200-400ms
-    const canSkipDb = (!skipTip || skipIntelligence) && cached && clientTranscripts && clientTranscripts.length > 0;
+    // FAST PATH: Manual tip requests use the client transcript snapshot directly.
+    // Skip DB query entirely so button-click latency stays low.
+    const canSkipDb = !skipTip && clientTranscripts && clientTranscripts.length > 0;
 
     let transcripts: IntelligenceTranscript[];
     let transcriptCount: number;
@@ -109,13 +122,13 @@ export const handler = async (
     let aiTipPayload: any = undefined;
 
     // Determine if we need to run intelligence analysis
-    const shouldRunIntelligence = !skipIntelligence && !cached;
+    const shouldRunIntelligence = !skipIntelligence && !cached && !clientIntelligence;
 
     const intelligencePromise = shouldRunIntelligence 
       ? generateConversationIntelligence({ conversationId, transcripts })
-      : Promise.resolve(cached || fallbackIntelligence);
+      : Promise.resolve(baseIntelligence);
 
-    if (cached) cacheHit = true;
+    if (cached || clientIntelligence) cacheHit = true;
 
     // If skipTip is false, we start generating the tip in parallel with intelligence
     if (!skipTip) {
@@ -288,15 +301,15 @@ export const handler = async (
       body: JSON.stringify({
         type: 'INTELLIGENCE_UPDATE',
         payload: {
-          intelligence: {
-            sentiment: intelligence.sentiment,
-            intents: intelligence.intents,
-            topics: intelligence.topics,
-            summary: intelligence.summary,
-          },
-          entities: intelligence.entities,
-          ...(aiTipPayload ? { aiTip: aiTipPayload } : {}),
-          timestamp: Date.now()
+            intelligence: {
+              sentiment: intelligence.sentiment,
+              intents: intelligence.intents,
+              topics: intelligence.topics,
+              summary: intelligence.summary,
+            },
+            entities: intelligence.entities,
+            ...(aiTipPayload ? { aiTip: aiTipPayload } : {}),
+            timestamp: Date.now()
         }
       })
     };
@@ -320,3 +333,40 @@ export const handler = async (
     };
   }
 };
+
+function normalizeClientIntelligence(snapshot: ClientIntelligenceSnapshot | undefined): IntelligenceResult | null {
+  if (!snapshot) {
+    return null;
+  }
+
+  const hasIntelligence = !!snapshot.intelligence;
+  const hasEntities = !!snapshot.entities;
+
+  if (!hasIntelligence && !hasEntities) {
+    return null;
+  }
+
+  return {
+    sentiment: {
+      label: snapshot.intelligence?.sentiment?.label || 'neutral',
+      score: snapshot.intelligence?.sentiment?.score || 0,
+      averageScore: snapshot.intelligence?.sentiment?.averageScore || snapshot.intelligence?.sentiment?.score || 0
+    },
+    intents: snapshot.intelligence?.intents || [],
+    topics: snapshot.intelligence?.topics || [],
+    summary: snapshot.intelligence?.summary || 'Intelligence provided by client snapshot',
+    entities: {
+      businessNames: snapshot.entities?.businessNames || [],
+      contactInfo: {
+        emails: snapshot.entities?.contactInfo?.emails || [],
+        phoneNumbers: snapshot.entities?.contactInfo?.phoneNumbers || [],
+        urls: snapshot.entities?.contactInfo?.urls || []
+      },
+      locations: snapshot.entities?.locations || [],
+      dates: snapshot.entities?.dates || [],
+      people: snapshot.entities?.people || [],
+      websiteStatus: snapshot.entities?.websiteStatus || 'unknown'
+    },
+    model: 'client-snapshot'
+  };
+}

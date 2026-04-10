@@ -61,6 +61,28 @@ export interface ExtractedEntities {
   websiteStatus?: 'has_website' | 'no_website' | 'unknown';
 }
 
+export interface ClientIntelligenceSnapshot {
+  intelligence?: {
+    sentiment?: Partial<ConversationIntelligence['sentiment']>;
+    intents?: ConversationIntelligence['intents'];
+    topics?: ConversationIntelligence['topics'];
+    summary?: string;
+  };
+  entities?: {
+    businessNames?: string[];
+    contactInfo?: {
+      emails?: string[];
+      phoneNumbers?: string[];
+      urls?: string[];
+    };
+    locations?: string[];
+    dates?: string[];
+    people?: string[];
+    websiteStatus?: 'has_website' | 'no_website' | 'unknown';
+  };
+  timestamp?: number;
+}
+
 export interface IntelligenceResult {
   sentiment: ConversationIntelligence['sentiment'];
   intents: ConversationIntelligence['intents'];

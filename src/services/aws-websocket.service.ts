@@ -13,7 +13,7 @@
  */
 
 import { AWS_WEBSOCKET_URL, BACKEND_API_KEY } from '@/config/aws';
-import type { IntelligenceUpdatePayload } from '@/types/ai-coaching.types';
+import type { ConversationIntelligence, ExtractedEntities, IntelligenceUpdatePayload } from '@/types/ai-coaching.types';
 import type { WebhookStatusUpdatePayload } from '@/types';
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error' | 'reconnecting';
@@ -27,6 +27,12 @@ export interface AIRecommendation {
     script: string;
   }>;
   recommendationId: string;
+  timestamp: number;
+}
+
+interface ClientIntelligenceSnapshot {
+  intelligence: ConversationIntelligence | null;
+  entities: ExtractedEntities | null;
   timestamp: number;
 }
 
@@ -275,7 +281,13 @@ export class AWSWebSocketService {
   /**
    * Request intelligence update (auto-analysis — skips AI tip generation)
    */
-  async getIntelligence(conversationId: string, skipTip = true, transcripts?: Array<{ speaker: string; text: string }>, skipIntelligence = false): Promise<void> {
+  async getIntelligence(
+    conversationId: string,
+    skipTip = true,
+    transcripts?: Array<{ speaker: string; text: string }>,
+    skipIntelligence = false,
+    clientIntelligence?: ClientIntelligenceSnapshot
+  ): Promise<void> {
     if (!this.isConnected()) {
       console.warn('⚠️ [AWSWebSocket] Cannot get intelligence - not connected');
       return;
@@ -295,8 +307,12 @@ export class AWSWebSocketService {
         message.transcripts = transcripts;
       }
 
+      if (clientIntelligence) {
+        message.clientIntelligence = clientIntelligence;
+      }
+
       await this.sendMessage(message);
-      console.log(`🧠 [AWSWebSocket] Intelligence requested (skipTip: ${skipTip}, clientTranscripts: ${transcripts?.length || 0})`);
+      console.log(`🧠 [AWSWebSocket] Intelligence requested (skipTip: ${skipTip}, clientTranscripts: ${transcripts?.length || 0}, clientSnapshot=${!!clientIntelligence})`);
     } catch (error: any) {
       console.error('❌ [AWSWebSocket] Failed to request intelligence:', error);
     }

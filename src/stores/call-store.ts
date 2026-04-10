@@ -368,6 +368,12 @@ export const useCallStore = create<CallStore>((set, get) => ({
         speaker: t.speaker === 'customer' ? 'caller' : 'agent',
         text: t.text,
       }));
+
+    const clientIntelligence = state.intelligence || state.entities ? {
+      intelligence: state.intelligence,
+      entities: state.entities,
+      timestamp: Date.now(),
+    } : undefined;
     
     // Send message to Background Worker (which holds the WebSocket)
     chrome.runtime.sendMessage({
@@ -375,6 +381,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
       payload: {
         conversationId: state.aiConversationId || state.session?.id,
         transcripts: recentTranscripts,
+        clientIntelligence,
         text: `[Requesting Tip] ${currentOption.label}`,
         timestamp: Date.now()
       }
