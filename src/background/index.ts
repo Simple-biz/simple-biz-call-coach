@@ -907,12 +907,14 @@ async function processMessage(message: any, sender: any) {
 
         // Request tip from Lambda — response streams back via TIP_CHUNK messages
         // Pass client transcripts to skip DB read in Lambda
+        // Use skipIntelligence=true for manual button click — FAST PATH
         try {
-          console.log('🌊 [Background] Requesting streaming tip from Lambda...');
+          console.log('🌊 [Background] Requesting streaming tip from Lambda (FAST PATH)...');
           await awsWebSocketService.getIntelligence(
             extensionState.conversationId,
             false,
-            message.payload?.transcripts
+            message.payload?.transcripts,
+            true
           );
           return { success: true, message: 'Streaming tip...' };
         } catch (error: any) {

@@ -275,7 +275,7 @@ export class AWSWebSocketService {
   /**
    * Request intelligence update (auto-analysis — skips AI tip generation)
    */
-  async getIntelligence(conversationId: string, skipTip = true, transcripts?: Array<{ speaker: string; text: string }>): Promise<void> {
+  async getIntelligence(conversationId: string, skipTip = true, transcripts?: Array<{ speaker: string; text: string }>, skipIntelligence = false): Promise<void> {
     if (!this.isConnected()) {
       console.warn('⚠️ [AWSWebSocket] Cannot get intelligence - not connected');
       return;
@@ -286,6 +286,7 @@ export class AWSWebSocketService {
         action: 'getIntelligence',
         conversationId,
         skipTip,
+        skipIntelligence,
         timestamp: Date.now(),
       };
 

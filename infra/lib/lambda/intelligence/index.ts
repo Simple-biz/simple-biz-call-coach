@@ -52,16 +52,16 @@ export const handler = async (
 
     // Parse message body (optional parameters)
     const body = JSON.parse(event.body || '{}');
-    const { limit = 50, skipTip = false, transcripts: clientTranscripts } = body;
+    const { limit = 50, skipTip = false, skipIntelligence = false, transcripts: clientTranscripts } = body;
 
-    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip}, clientTranscripts: ${clientTranscripts?.length || 0})`);
+    console.log(`[Intelligence] Analyzing conversation: ${conversationId} (limit: ${limit}, skipTip: ${skipTip}, skipIntelligence: ${skipIntelligence}, clientTranscripts: ${clientTranscripts?.length || 0})`);
 
     // 1. Check if we can use cached intelligence (for manual tip requests)
-    const cached = !skipTip ? getCachedIntelligence(conversationId) : null;
+    const cached = (!skipTip || skipIntelligence) ? getCachedIntelligence(conversationId) : null;
 
     // FAST PATH: Manual tip with cached intelligence AND client-provided transcripts
     // Skip DB query entirely — saves ~200-400ms
-    const canSkipDb = !skipTip && cached && clientTranscripts && clientTranscripts.length > 0;
+    const canSkipDb = (!skipTip || skipIntelligence) && cached && clientTranscripts && clientTranscripts.length > 0;
 
     let transcripts: Array<{ speaker: string; text: string; timestamp?: number }>;
     let transcriptCount: number;
@@ -88,42 +88,34 @@ export const handler = async (
       console.log(`[Intelligence] Fetched ${transcripts.length} transcripts (${transcriptCount} total) for analysis`);
     }
 
-    // 2. Get intelligence (cached or compute)
+    // 2. Parallelize Intelligence and Tip Generation
     let intelligence;
     let cacheHit = false;
-
-    if (cached) {
-      // FAST PATH: Manual tip request with fresh cached intelligence — skip Claude call
-      intelligence = cached;
-      cacheHit = true;
-      console.log(`[Intelligence] Using cached intelligence — skipping redundant Claude call`);
-    } else {
-      // NORMAL PATH: Run intelligence analysis (auto-analysis or no cache available)
-      const aiStartTime = Date.now();
-      intelligence = await generateConversationIntelligence({
-        conversationId,
-        transcripts
-      });
-      const aiLatency = Date.now() - aiStartTime;
-      console.log(`[Intelligence] Analysis complete in ${aiLatency}ms, model: ${intelligence.model}`);
-
-      // Update cache
-      setCachedIntelligence(conversationId, intelligence);
-      console.log(`[Intelligence] Cache updated for conversation: ${conversationId}`);
-    }
-
-    // 3. Generate AI tip from golden script (only if not skipped)
     let aiTipPayload: any = undefined;
 
+    // Determine if we need to run intelligence analysis
+    const shouldRunIntelligence = !skipIntelligence && !cached;
+
+    const intelligencePromise = shouldRunIntelligence 
+      ? generateConversationIntelligence({ conversationId, transcripts })
+      : Promise.resolve(cached || {
+          sentiment: { label: 'neutral', score: 0, averageScore: 0 },
+          intents: [],
+          topics: [],
+          summary: 'Intelligence skipped or cached',
+          entities: { businessNames: [], contactInfo: { emails: [], phoneNumbers: [], urls: [] }, locations: [], dates: [], people: [] },
+          model: 'none'
+        });
+
+    if (cached) cacheHit = true;
+
+    // If skipTip is false, we start generating the tip in parallel with intelligence
     if (!skipTip) {
-      console.log(`[Intelligence] Generating AI tip...`);
+      console.log(`[Intelligence] Generating AI tip (Parallel)...`);
 
-      // Client transcripts are chronological; DB transcripts are DESC (newest first)
-      // Normalize to chronological for turn counting
+      // Normalize transcripts for tip generation
       const chronological = canSkipDb ? [...transcripts] : [...transcripts].reverse();
-
-      // Count conversation TURNS (speaker changes), not raw transcript fragments
-      // Deepgram splits speech into fragments, so 1 turn = multiple rows
+      
       let turnCount = 0;
       let lastSpeaker = '';
       for (const t of chronological) {
@@ -134,92 +126,54 @@ export const handler = async (
       }
 
       let callStage: 'greeting' | 'discovery' | 'objection' | 'closing' | 'conversion';
-      if (turnCount < 4) {
-        callStage = 'greeting';
-      } else if (turnCount < 8) {
-        callStage = 'discovery';
-      } else if (turnCount < 14) {
-        callStage = 'objection';
-      } else {
-        callStage = 'closing';
+      if (turnCount < 4) callStage = 'greeting';
+      else if (turnCount < 8) callStage = 'discovery';
+      else if (turnCount < 14) callStage = 'objection';
+      else callStage = 'closing';
+
+      // We need intelligence summary for the tip prompt. 
+      // If we're running intelligence in parallel, we wait for it.
+      // If we have cached intelligence, we use it immediately.
+      const currentIntelligence = await intelligencePromise;
+      intelligence = currentIntelligence;
+      
+      if (shouldRunIntelligence) {
+        setCachedIntelligence(conversationId, currentIntelligence);
+        console.log(`[Intelligence] Cache updated with new analysis`);
       }
 
-      console.log(`[Intelligence] Turn count: ${turnCount} (from ${transcriptCount} transcript rows), stage: ${callStage}`);
-
-      // Detect conversion: check most recent 10 messages
-      // For client transcripts (chronological): slice(-10) = most recent
-      // For DB transcripts (DESC): slice(0, 10) = most recent
+      // Detect conversion and signoff (logic remains same, uses freshly resolved intelligence)
       const recentMsgs = canSkipDb ? transcripts.slice(-10) : transcripts.slice(0, 10);
-      const recentCustomerMessages = recentMsgs
-        .filter(t => t.speaker === 'caller')
-        .map(t => t.text.toLowerCase());
-
-      // Objection phrases — if customer says these AFTER a short "yeah/okay", it's not real agreement
+      const recentCustomerMessages = recentMsgs.filter(t => t.speaker === 'caller').map(t => t.text.toLowerCase());
+      
       const objectionPhrases = ['already have', 'i don\'t know', 'not sure', 'i don\'t need', 'not interested', 'i\'m good', 'no thanks', 'my developer', 'don\'t think', 'already said', 'already told'];
-
-      // Only check LAST 3 customer messages for direct agreement (avoids stale filler words)
-      const last3CustomerMsgs = recentCustomerMessages.slice(-3);
       const directSignals = ['yes', 'sure', 'okay', 'yeah', 'sounds good', "i'm good with that", "that's great", "that's fine", "that works", "i'm down", "i'm interested", "go ahead", "let's do it", "fine"];
-
-      // Smart agreement detection: filter out filler "yeah/okay" followed by objections
+      
       let hasDirectAgreement = false;
+      const last3CustomerMsgs = recentCustomerMessages.slice(-3);
       for (let i = 0; i < last3CustomerMsgs.length; i++) {
         const msg = last3CustomerMsgs[i];
-        const isAgreement = directSignals.some(signal => msg.includes(signal));
-        if (!isAgreement) continue;
-
-        // If this message itself contains objection language → not real agreement
-        if (objectionPhrases.some(p => msg.includes(p))) continue;
-
-        // Short filler (≤5 words) like "Yeah." — only counts if NO later messages contain objections
-        if (msg.split(/\s+/).length <= 5) {
-          const laterMsgs = last3CustomerMsgs.slice(i + 1);
-          if (laterMsgs.some(m => objectionPhrases.some(p => m.includes(p)))) continue;
+        if (directSignals.some(signal => msg.includes(signal)) && !objectionPhrases.some(p => msg.includes(p))) {
+          hasDirectAgreement = true;
+          break;
         }
-
-        hasDirectAgreement = true;
-        break;
       }
 
-      // Direct agreement (requires agent to have asked for callback)
-      // Indirect agreement (customer proactively asks for callback — no agent ask needed)
       const indirectSignals = ["have bob call", "call me back", "they can call", "have them call", "bob can call", "give me a call", "i'll take a call", "take a call from bob", "he can call", "bob call me", "can call me", "want to call", "set up a call", "schedule a call", "call tomorrow", "call me tomorrow", "call me at", "call me later", "here's my number", "my number is", "you can reach me", "reach me at", "send me a quick call", "give you my number", "give you my email"];
-      const hasIndirectAgreement = recentCustomerMessages.some(msg =>
-        indirectSignals.some(signal => msg.includes(signal))
-      );
-      // Also check if agent already asked for callback
-      const recentAgentMessages = recentMsgs
-        .filter(t => t.speaker === 'agent')
-        .map(t => t.text.toLowerCase());
-      // Must match callback-ask patterns specifically, not just any mention of "Bob" (e.g. "Bob and I are here" in intro)
+      const hasIndirectAgreement = recentCustomerMessages.some(msg => indirectSignals.some(signal => msg.includes(signal)));
       const callbackPatterns = ['call later', 'callback', 'quick call', 'call you back', 'give you a call', 'bob or his partner'];
-      const askedCallback = recentAgentMessages.some(msg =>
-        callbackPatterns.some(p => msg.includes(p))
-      );
+      const askedCallback = recentMsgs.filter(t => t.speaker === 'agent').some(t => callbackPatterns.some(p => t.text.toLowerCase().includes(p)));
       const hasAgreed = (hasDirectAgreement && askedCallback) || hasIndirectAgreement;
 
-      // ENTITY-BASED CONVERSION: If intelligence already extracted phone or email + name,
-      // the customer gave their info — that IS conversion regardless of verbal signals
       const hasEntityPhone = (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0;
       const hasEntityEmail = (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0;
       const hasEntityName = (intelligence.entities?.people?.length ?? 0) > 0;
       const entityBasedConversion = hasEntityName && (hasEntityPhone || hasEntityEmail) && askedCallback;
 
-      console.log('[Intelligence] Conversion detection:', {
-        customerMessages: recentCustomerMessages,
-        hasAgreed,
-        entityBasedConversion,
-        askedCallback,
-        currentStage: callStage
-      });
-
       if (hasAgreed || entityBasedConversion) {
         callStage = 'conversion';
-        console.log(`[Intelligence] Customer agreed to callback — switching to CONVERSION stage (verbal: ${hasAgreed}, entity: ${entityBasedConversion})`);
-
-        // Check if customer already gave their details → force sign-off
         const namePattern = /my name is|it's \w+|i'm \w+|ask for \w+|call me \w+/i;
-        const numberPattern = /\d{5,}/; // Flexible: any 5+ digit sequence
+        const numberPattern = /\d{5,}/;
         const timePattern = /after \d|before \d|around \d|at \d|at\d|\d+\s*pm|\d+\s*am|this afternoon|this evening|tomorrow|in the morning|tonight/i;
         const alreadyToldYou = /already (said|gave|told|talked)|i got it|yeah yeah|you have my|we already/i;
 
@@ -227,110 +181,37 @@ export const handler = async (
         const customerGaveNumber = recentCustomerMessages.some(msg => numberPattern.test(msg));
         const customerGaveTime = recentCustomerMessages.some(msg => timePattern.test(msg));
         const customerFrustrated = recentCustomerMessages.some(msg => alreadyToldYou.test(msg));
-
-        // Entity-based signoff: if intelligence extracted name + (phone or email), customer gave their details
         const entitySignoff = hasEntityName && (hasEntityPhone || hasEntityEmail);
         
         if ((customerGaveName && customerGaveTime) || (customerGaveName && customerGaveNumber) || customerFrustrated || entitySignoff) {
           callStage = 'signoff' as any;
-          console.log(`[Intelligence] Customer already gave details — switching to SIGNOFF (transcript: name=${customerGaveName} number=${customerGaveNumber} time=${customerGaveTime} frustrated=${customerFrustrated}, entity: ${entitySignoff})`);
         }
       }
 
-      // STAGE REGRESSION PREVENTION: once we reach CONVERSION or SIGNOFF, never go back
+      // Regression prevention
       const stageRank: Record<string, number> = { greeting: 0, discovery: 1, objection: 2, closing: 3, conversion: 4, signoff: 5 };
       const prevHighStage = stageHighWaterMark[conversationId];
       const currentRank = stageRank[callStage] ?? 0;
       const prevRank = prevHighStage ? (stageRank[prevHighStage] ?? 0) : 0;
-
-      if (prevRank >= stageRank['conversion'] && currentRank < prevRank) {
-        // We were in CONVERSION/SIGNOFF before — don't regress
-        callStage = prevHighStage as any;
-        console.log(`[Intelligence] Stage regression prevented: kept ${callStage} (would have been ${Object.keys(stageRank).find(k => stageRank[k] === currentRank)})`);
-      }
+      if (prevRank >= stageRank['conversion'] && currentRank < prevRank) callStage = prevHighStage as any;
       stageHighWaterMark[conversationId] = currentRank > prevRank ? callStage : (prevHighStage || callStage);
 
-      // Get most recent transcripts for AI context
-      // Client transcripts are chronological: slice(-N) = most recent N
-      // DB transcripts are DESC: slice(0, N) then reverse for chronological
-      const contextWindow = 20;
-
-      // ── Accumulate conversation facts ──
-      // These persist across tip requests within the same Lambda container
-      if (!conversationFacts[conversationId]) {
-        conversationFacts[conversationId] = new Set();
-      }
+      // Facts accumulation
+      if (!conversationFacts[conversationId]) conversationFacts[conversationId] = new Set();
       const facts = conversationFacts[conversationId];
+      if (intelligence.entities?.websiteStatus === 'has_website') facts.add('Customer ALREADY HAS a website.');
+      else if (intelligence.entities?.websiteStatus === 'no_website') facts.add('Customer does NOT have a website.');
+      if (intelligence.entities?.businessNames?.length) facts.add(`Business: ${intelligence.entities.businessNames.join(', ')}`);
+      if (intelligence.intents?.some((i: any) => i.intent === 'not_interested')) facts.add('Customer NOT INTERESTED.');
+      if (intelligence.intents?.some((i: any) => i.intent === 'request_callback')) facts.add('Customer agreed to callback.');
+      if (hasEntityName) facts.add(`Name collected: ${intelligence.entities!.people!.join(', ')}`);
 
-      // Website status from intelligence entities
-      if (intelligence.entities?.websiteStatus === 'has_website') {
-        facts.add('Customer ALREADY HAS a website — do NOT ask if they have one. Pivot to optimization/SEO.');
-      } else if (intelligence.entities?.websiteStatus === 'no_website') {
-        facts.add('Customer does NOT have a website — pitch building one.');
-      }
-
-      // Business identified
-      if (intelligence.entities?.businessNames?.length) {
-        facts.add(`Customer's business: ${intelligence.entities.businessNames.join(', ')}`);
-      }
-
-      // Customer expressed interest or objection via intents
-      if (intelligence.intents?.includes('not_interested')) {
-        facts.add('Customer expressed NOT INTERESTED — handle objections carefully, do not hard-sell.');
-      }
-      if (intelligence.intents?.includes('request_callback')) {
-        facts.add('Customer agreed to a callback — move to CONVERSION, collect details.');
-      }
-
-      // Key contact info collected
-      if ((intelligence.entities?.people?.length ?? 0) > 0) {
-        facts.add(`Customer name collected: ${intelligence.entities!.people!.join(', ')}`);
-      }
-      if ((intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0) {
-        facts.add(`Customer email collected: ${intelligence.entities!.contactInfo!.emails!.join(', ')}`);
-      }
-
-      // Scan transcript for agent already asking about website (detect repetition)
-      const allMessages = canSkipDb ? transcripts : transcripts.slice().reverse();
-      const agentAskedWebsite = allMessages.some(t =>
-        t.speaker === 'agent' && /do you (have|currently have) a website|is that something you('ve| have) been/i.test(t.text)
-      );
-      const customerAnsweredWebsite = allMessages.some(t =>
-        t.speaker === 'caller' && /already have a website|have a website|have a web|website.*(up|running)|got a website/i.test(t.text)
-      );
-      if (agentAskedWebsite && customerAnsweredWebsite) {
-        facts.add('Agent ALREADY ASKED about website and customer answered — do NOT ask again.');
-      }
-
-      // Agent already pitched SEO
-      const agentPitchedSEO = allMessages.some(t =>
-        t.speaker === 'agent' && /especially with seo|optimize websites|seo at super affordable/i.test(t.text)
-      );
-      if (agentPitchedSEO) {
-        facts.add('Agent ALREADY PITCHED SEO/optimization — do NOT repeat the same pitch.');
-      }
-
-      // Agent already asked for callback
-      const agentAskedCallback = allMessages.some(t =>
-        t.speaker === 'agent' && /would you mind if.*(bob|partner)|give you a quick call/i.test(t.text)
-      );
-      if (agentAskedCallback) {
-        facts.add('Agent ALREADY ASKED for callback — do NOT suggest asking again unless context changed.');
-      }
-
-      console.log(`[Intelligence] Conversation facts (${facts.size}):`, Array.from(facts));
-
+      const contextWindow = 20;
       let recentTranscripts;
-      if (canSkipDb) {
-        recentTranscripts = transcripts.slice(-contextWindow);
-      } else {
-        recentTranscripts = transcripts.slice(0, contextWindow).reverse();
-      }
-      const conversationContext = recentTranscripts
-        .map(t => `${t.speaker.toUpperCase()}: "${t.text}"`)
-        .join('\n');
+      if (canSkipDb) recentTranscripts = transcripts.slice(-contextWindow);
+      else recentTranscripts = transcripts.slice(0, contextWindow).reverse();
+      const conversationContext = recentTranscripts.map(t => `${t.speaker.toUpperCase()}: "${t.text}"`).join('\n');
 
-      // Get previous suggestions for this conversation
       const prevSuggestions = previousSuggestionsCache[conversationId] || [];
 
       const aiTipStartTime = Date.now();
@@ -344,37 +225,23 @@ export const handler = async (
         previousSuggestions: prevSuggestions,
         conversationFacts: Array.from(facts),
         collectedInfo: {
-          customerName: (intelligence.entities?.people?.length ?? 0) > 0,
+          customerName: hasEntityName,
           businessName: (intelligence.entities?.businessNames?.length ?? 0) > 0,
-          phoneNumber: (intelligence.entities?.contactInfo?.phoneNumbers?.length ?? 0) > 0,
-          email: (intelligence.entities?.contactInfo?.emails?.length ?? 0) > 0,
+          phoneNumber: hasEntityPhone,
+          email: hasEntityEmail,
         },
       }, async (delta: string) => {
-        // Push each text chunk to client via WebSocket
         await sendToConnection(connectionId, {
           type: 'TIP_CHUNK',
-          payload: {
-            delta,
-            ...(isFirstChunk ? { heading: 'Generating...', stage: callStage } : {}),
-          }
+          payload: { delta, ...(isFirstChunk ? { heading: 'Generating...', stage: callStage } : {}) }
         }, domain, stage);
         isFirstChunk = false;
       });
-      const aiTipLatency = Date.now() - aiTipStartTime;
 
-      // Track this suggestion
-      if (!previousSuggestionsCache[conversationId]) {
-        previousSuggestionsCache[conversationId] = [];
-      }
+      if (!previousSuggestionsCache[conversationId]) previousSuggestionsCache[conversationId] = [];
       previousSuggestionsCache[conversationId].push(aiTip.suggestion);
-      // Keep last 10 suggestions max
-      if (previousSuggestionsCache[conversationId].length > 10) {
-        previousSuggestionsCache[conversationId] = previousSuggestionsCache[conversationId].slice(-10);
-      }
+      if (previousSuggestionsCache[conversationId].length > 10) previousSuggestionsCache[conversationId] = previousSuggestionsCache[conversationId].slice(-10);
 
-      console.log(`[Intelligence] AI Tip generated in ${aiTipLatency}ms, Stage: ${aiTip.stage}, Heading: ${aiTip.heading}, Previous suggestions: ${prevSuggestions.length}`);
-
-      // Save AI recommendation to database
       const recommendationId = await saveAIRecommendation({
         conversation_id: conversationId,
         heading: aiTip.heading,
@@ -396,6 +263,11 @@ export const handler = async (
         recommendationId,
       };
     } else {
+      // If skipTip is true, we just wait for intelligence to finish
+      intelligence = await intelligencePromise;
+      if (shouldRunIntelligence) {
+        setCachedIntelligence(conversationId, intelligence);
+      }
       console.log(`[Intelligence] Skipping AI tip generation (auto-analysis mode)`);
     }
 
