@@ -29,6 +29,11 @@ export default function SidePanel() {
     useState<DeepgramStatus>("disconnected");
   const isLoadingScripts = useCallStore((s) => s.isGeneratingTip);
 
+  // Readiness indicator
+  const [readiness, setReadiness] = useState<{ ready: boolean; issues: string[]; checked: boolean }>({
+    ready: true, issues: [], checked: false
+  });
+
   // Sandbox mode: Customer input (text)
   const [customerMessage, setCustomerMessage] = useState('');
   const [threadExpanded, setThreadExpanded] = useState(false);
@@ -125,6 +130,7 @@ export default function SidePanel() {
         case "CALL_STARTED":
         case "CAPTURE_STARTED":
           useCallStore.getState().startCall();
+          setReadiness({ ready: true, issues: [], checked: true });
           console.log("✅ [SidePanel] Call started with session");
           break;
 
@@ -364,6 +370,11 @@ export default function SidePanel() {
         case "CALL_START_FAILED":
           console.error("❌ [SidePanel] Call start failed:", message.error);
           setDeepgramStatus("error");
+          setReadiness({
+            ready: false,
+            issues: [typeof message.error === 'string' ? message.error : 'Call start failed — please refresh the CallTools page and try again'],
+            checked: true
+          });
           break;
 
         case "DEVELOPER_MODE_CHANGED":
@@ -398,6 +409,20 @@ export default function SidePanel() {
       })
       .catch((error) => {
         console.log("⚠️ [SidePanel] Could not load state:", error);
+      });
+
+    // Check readiness
+    chrome.runtime
+      .sendMessage({ type: "CHECK_READINESS" })
+      .then((result) => {
+        if (result) {
+          setReadiness({ ready: result.ready, issues: result.issues || [], checked: true });
+          console.log(`🩺 [SidePanel] Readiness: ${result.ready ? 'READY' : 'NOT READY'}`, result.issues);
+        }
+      })
+      .catch((error) => {
+        console.log("⚠️ [SidePanel] Readiness check failed:", error);
+        setReadiness({ ready: false, issues: ['Cannot reach background service — please refresh the page'], checked: true });
       });
 
     return () => chrome.runtime.onMessage.removeListener(handleMessage);
@@ -813,6 +838,35 @@ export default function SidePanel() {
           </div>
         </div>
       </div>
+
+      {/* Readiness Banner */}
+      {readiness.checked && !readiness.ready && callState !== "active" && (
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-amber-600 text-sm">⚠️</span>
+            <span className="text-xs text-amber-800 font-medium">
+              {readiness.issues[0] || 'Extension not ready'}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              chrome.runtime
+                .sendMessage({ type: "CHECK_READINESS" })
+                .then((result) => {
+                  if (result) {
+                    setReadiness({ ready: result.ready, issues: result.issues || [], checked: true });
+                  }
+                })
+                .catch(() => {
+                  setReadiness({ ready: false, issues: ['Cannot reach background service — please refresh the page'], checked: true });
+                });
+            }}
+            className="text-xs px-2 py-1 bg-amber-200 hover:bg-amber-300 text-amber-800 rounded font-medium transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* DUAL-VIEW MAIN CONTENT */}
       {environment === 'sandbox' ? (

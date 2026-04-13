@@ -816,6 +816,38 @@ async function processMessage(message: any, sender: any) {
         timestamp: Date.now(),
       }
 
+    case 'CHECK_READINESS': {
+      console.log('🔍 [Background] Readiness check requested')
+      const readiness: { ready: boolean; issues: string[] } = { ready: true, issues: [] }
+
+      // Check Deepgram API key
+      const dgSettings = await chrome.storage.local.get('deepgramApiKey')
+      const dgKey = dgSettings.deepgramApiKey || import.meta.env.VITE_DEEPGRAM_API_KEY || ''
+      if (!dgKey) {
+        readiness.ready = false
+        readiness.issues.push('No Deepgram API key configured')
+      }
+
+      // Check offscreen document can be queried (service worker alive)
+      try {
+        await chrome.runtime.getContexts({
+          contextTypes: ['OFFSCREEN_DOCUMENT' as chrome.runtime.ContextType],
+        })
+      } catch {
+        readiness.ready = false
+        readiness.issues.push('Extension context invalid — please refresh the page')
+      }
+
+      // Check tab ID available (content script connected)
+      if (!extensionState.tabId && !message.tabId) {
+        readiness.ready = false
+        readiness.issues.push('Not connected to a CallTools tab')
+      }
+
+      console.log(`✅ [Background] Readiness: ${readiness.ready ? 'READY' : 'NOT READY'} — ${readiness.issues.join(', ') || 'all checks passed'}`)
+      return readiness
+    }
+
     case 'PING':
       return {
         alive: true,
