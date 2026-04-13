@@ -411,13 +411,14 @@ export default function SidePanel() {
         console.log("⚠️ [SidePanel] Could not load state:", error);
       });
 
-    // Check readiness
+    // Check readiness — background wraps response in { success, result }
     chrome.runtime
       .sendMessage({ type: "CHECK_READINESS" })
-      .then((result) => {
-        if (result) {
-          setReadiness({ ready: result.ready, issues: result.issues || [], checked: true });
-          console.log(`🩺 [SidePanel] Readiness: ${result.ready ? 'READY' : 'NOT READY'}`, result.issues);
+      .then((response) => {
+        const data = response?.result ?? response;
+        if (data) {
+          setReadiness({ ready: !!data.ready, issues: data.issues || [], checked: true });
+          console.log(`🩺 [SidePanel] Readiness: ${data.ready ? 'READY' : 'NOT READY'}`, data.issues);
         }
       })
       .catch((error) => {
@@ -852,9 +853,10 @@ export default function SidePanel() {
             onClick={() => {
               chrome.runtime
                 .sendMessage({ type: "CHECK_READINESS" })
-                .then((result) => {
-                  if (result) {
-                    setReadiness({ ready: result.ready, issues: result.issues || [], checked: true });
+                .then((response) => {
+                  const data = response?.result ?? response;
+                  if (data) {
+                    setReadiness({ ready: !!data.ready, issues: data.issues || [], checked: true });
                   }
                 })
                 .catch(() => {
