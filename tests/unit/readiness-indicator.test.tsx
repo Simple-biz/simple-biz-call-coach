@@ -46,10 +46,9 @@ async function checkReadiness(opts: {
     readiness.issues.push('Extension context invalid — please refresh the page');
   }
 
-  // Check tab ID available
+  // Check tab ID — informational only, not a blocker
   if (!opts.tabId) {
-    readiness.ready = false;
-    readiness.issues.push('Not connected to a CallTools tab');
+    readiness.issues.push('Tab not linked yet (will connect on call start)');
   }
 
   return readiness;
@@ -104,7 +103,7 @@ describe('Background Readiness Check Logic', () => {
     expect(result.issues).toContain('Extension context invalid — please refresh the page');
   });
 
-  it('should fail when no tab is connected', async () => {
+  it('should still be ready when no tab is connected (tab links on call start)', async () => {
     const result = await checkReadiness({
       deepgramApiKey: 'abc123',
       envKey: '',
@@ -112,8 +111,8 @@ describe('Background Readiness Check Logic', () => {
       tabId: null,
     });
 
-    expect(result.ready).toBe(false);
-    expect(result.issues).toContain('Not connected to a CallTools tab');
+    expect(result.ready).toBe(true);
+    expect(result.issues).toContain('Tab not linked yet (will connect on call start)');
   });
 
   it('should accumulate multiple issues', async () => {
@@ -128,7 +127,7 @@ describe('Background Readiness Check Logic', () => {
     expect(result.issues).toHaveLength(3);
     expect(result.issues).toContain('No Deepgram API key configured');
     expect(result.issues).toContain('Extension context invalid — please refresh the page');
-    expect(result.issues).toContain('Not connected to a CallTools tab');
+    expect(result.issues).toContain('Tab not linked yet (will connect on call start)');
   });
 });
 

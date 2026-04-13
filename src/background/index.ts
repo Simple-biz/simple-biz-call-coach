@@ -838,10 +838,10 @@ async function processMessage(message: any, sender: any) {
         readiness.issues.push('Extension context invalid — please refresh the page')
       }
 
-      // Check tab ID available (content script connected)
+      // Tab ID check is informational only — tab gets linked when a call starts,
+      // so it's normal for it to be absent before dialing.
       if (!extensionState.tabId && !message.tabId) {
-        readiness.ready = false
-        readiness.issues.push('Not connected to a CallTools tab')
+        readiness.issues.push('Tab not linked yet (will connect on call start)')
       }
 
       console.log(`✅ [Background] Readiness: ${readiness.ready ? 'READY' : 'NOT READY'} — ${readiness.issues.join(', ') || 'all checks passed'}`)
