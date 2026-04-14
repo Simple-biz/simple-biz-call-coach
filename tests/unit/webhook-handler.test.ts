@@ -124,12 +124,12 @@ describe('CallTools Webhook Handler', () => {
       expect(JSON.parse(result.body)).toEqual({ error: 'Unauthorized' });
     });
 
-    it('should return 401 when query param secret is wrong', async () => {
+    it('should return 403 when query param secret is wrong', async () => {
       const event = makeEvent({
         queryStringParameters: { secret: 'wrong-secret' },
       });
       const result = await handler(event);
-      expect(result.statusCode).toBe(401);
+      expect(result.statusCode).toBe(403);
     });
 
     it('should accept valid secret via query param', async () => {
@@ -156,13 +156,13 @@ describe('CallTools Webhook Handler', () => {
       expect(result.statusCode).toBe(200);
     });
 
-    it('should return 401 when Bearer token is invalid', async () => {
+    it('should return 403 when Bearer token is invalid', async () => {
       const event = makeEvent({
         headers: { Authorization: 'Bearer wrong-token' },
         queryStringParameters: null,
       });
       const result = await handler(event);
-      expect(result.statusCode).toBe(401);
+      expect(result.statusCode).toBe(403);
     });
 
     it('should return 401 for non-Bearer auth without query secret', async () => {
@@ -210,31 +210,28 @@ describe('CallTools Webhook Handler', () => {
       expect(JSON.parse(result.body).error).toContain('uuid');
     });
 
-    it('should return 400 for missing id', async () => {
+    it('should accept payload with missing id (optional for auto-dial)', async () => {
       const event = makeEvent({
         body: JSON.stringify(makeCallToolsPayload({ id: undefined })),
       });
       const result = await handler(event);
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain('id');
+      expect(result.statusCode).toBe(200);
     });
 
-    it('should return 400 for non-number id', async () => {
+    it('should accept payload with non-number id (optional for auto-dial)', async () => {
       const event = makeEvent({
         body: JSON.stringify(makeCallToolsPayload({ id: 'not-a-number' })),
       });
       const result = await handler(event);
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain('id');
+      expect(result.statusCode).toBe(200);
     });
 
-    it('should return 400 for missing start time', async () => {
+    it('should accept payload with missing start time (optional for auto-dial)', async () => {
       const event = makeEvent({
         body: JSON.stringify(makeCallToolsPayload({ start: undefined })),
       });
       const result = await handler(event);
-      expect(result.statusCode).toBe(400);
-      expect(JSON.parse(result.body).error).toContain('start');
+      expect(result.statusCode).toBe(200);
     });
 
     it('should accept valid CallTools payload (call in progress)', async () => {
