@@ -1,0 +1,82 @@
+name: Deploy Chrome Extension
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    name: Build and Publish to Chrome Web Store
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests
+        run: npm test -- --run
+        # vitest exits 0 if no tests match, so this is safe even if unit tests grow
+
+      - name: Build extension
+        run: npm run build
+        # Produces dist/ — packaged by @crxjs/vite-plugin for Manifest V3
+
+      - name: Package extension zip
+        run: |
+          cd dist
+          zip -r ../extension.zip .
+          cd ..
+
+      - name: Get OAuth access token
+        id: oauth
+        run: |
+          RESPONSE=$(curl -s -X POST https://oauth2.googleapis.com/token \
+            -d "client_id=${{ secrets.CHROME_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.CHROME_CLIENT_SECRET }}" \
+            -d "refresh_token=${{ secrets.CHROME_REFRESH_TOKEN }}" \
+            -d "grant_type=refresh_token")
+          ACCESS_TOKEN=$(echo "$RESPONSE" | jq -r '.access_token')
+          if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+            echo "Failed to get access token. Response: $RESPONSE"
+            exit 1
+          fi
+          echo "access_token=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Upload new version to Chrome Web Store
+        run: |
+          UPLOAD_RESPONSE=$(curl -s -X PUT \
+            -H "Authorization: Bearer ${{ steps.oauth.outputs.access_token }}" \
+            -H "x-goog-api-version: 2" \
+            -T extension.zip \
+            "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}")
+          echo "Upload response: $UPLOAD_RESPONSE"
+          UPLOAD_STATE=$(echo "$UPLOAD_RESPONSE" | jq -r '.uploadState')
+          if [ "$UPLOAD_STATE" != "SUCCESS" ]; then
+            echo "Upload failed. State: $UPLOAD_STATE"
+            exit 1
+          fi
+
+      - name: Publish to Chrome Web Store
+        run: |
+          PUBLISH_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Bearer ${{ steps.oauth.outputs.access_token }}" \
+            -H "x-goog-api-version: 2" \
+            -H "Content-Length: 0" \
+            "https://www.googleapis.com/chromewebstore/v1.1/items/${{ secrets.CHROME_EXTENSION_ID }}/publish")
+          echo "Publish response: $PUBLISH_RESPONSE"
+          STATUS=$(echo "$PUBLISH_RESPONSE" | jq -r '.status[0]')
+          if [ "$STATUS" != "OK" ] && [ "$STATUS" != "ITEM_PENDING_REVIEW" ]; then
+            echo "Publish failed. Status: $STATUS"
+            exit 1
+          fi
+          echo "Published successfully. Status: $STATUS"

@@ -1,0 +1,82 @@
+name: Daily Infra Health
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+jobs:
+  infra-health:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Claude Code CLI
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
+
+      - name: Run infra health check
+        id: health
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          REPORT=$(claude -p "
+          Run a full AWS infrastructure health check for the simple.biz workspace.
+          Check:
+          1. All running EC2 instances — state, type, age
+          2. Elastic Beanstalk environments — health color, version deployed
+          3. Lambda functions — invocation errors in last 24h, throttles
+          4. RDS / Aurora — status, storage remaining
+          5. ECS services — task count vs desired, last deployment
+          6. API Gateway — 4xx/5xx error rates in last 24h
+          7. CloudWatch alarms — any in ALARM state
+          8. Estimated cost: current month spend vs last month
+          Format as a clean markdown report with severity icons:
+          ✅ Healthy | ⚠️ Warning | 🔴 Critical
+          End with a SUMMARY section: overall status + top 3 action items.
+          " --output-format text 2>&1)
+
+          echo "REPORT<<EOF" >> $GITHUB_OUTPUT
+          echo "$REPORT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Post health report as GitHub issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const report = `${{ steps.health.outputs.REPORT }}`;
+            const today = new Date().toISOString().split('T')[0];
+            const title = `Infra Health Report — ${today}`;
+
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: 'infra-health',
+              state: 'open'
+            });
+            for (const issue of issues.data) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                state: 'closed'
+              });
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: title,
+              body: report,
+              labels: ['infra-health', 'automated']
+            });
