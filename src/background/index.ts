@@ -177,7 +177,7 @@ async function startCaptureAndCoaching(captureTabId: number) {
     await ensureOffscreenDocument()
 
     const settings = await chrome.storage.local.get('deepgramApiKey')
-    const deepgramApiKey = settings.deepgramApiKey
+    const deepgramApiKey = settings.deepgramApiKey || import.meta.env.VITE_DEEPGRAM_API_KEY
     if (!deepgramApiKey) {
       throw new Error('No Deepgram API key configured. Please add your API key in settings.')
     }
