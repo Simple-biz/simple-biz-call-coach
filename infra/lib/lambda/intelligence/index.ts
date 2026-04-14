@@ -152,15 +152,19 @@ export const handler = async (
       else if (turnCount < 14) callStage = 'objection';
       else callStage = 'closing';
 
-      // We need intelligence summary for the tip prompt. 
-      // If we're running intelligence in parallel, we wait for it.
-      // If we have cached intelligence, we use it immediately.
-      const currentIntelligence = await intelligencePromise;
-      intelligence = currentIntelligence;
+      // Use baseIntelligence immediately — never block tip generation on fresh analysis.
+      // On cache hit: baseIntelligence is already fresh (instant).
+      // On cache miss: baseIntelligence is fallback (empty entities) — tip still starts immediately.
+      // Fresh intelligence resolves in background and updates cache for next request.
+      intelligence = baseIntelligence;
       
       if (shouldRunIntelligence) {
-        setCachedIntelligence(conversationId, currentIntelligence);
-        console.log(`[Intelligence] Cache updated with new analysis`);
+        intelligencePromise.then(freshIntelligence => {
+          setCachedIntelligence(conversationId, freshIntelligence);
+          console.log(`[Intelligence] Cache updated with fresh analysis (background)`);
+        }).catch(err => {
+          console.error('[Intelligence] Background intelligence refresh failed:', err);
+        });
       }
 
       // Detect conversion and signoff (logic remains same, uses freshly resolved intelligence)
