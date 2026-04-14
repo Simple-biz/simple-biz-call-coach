@@ -24,7 +24,8 @@ jobs:
         run: npm ci
 
       - name: Run tests
-        run: npm test -- --run
+        run: npm test -- --run --exclude='tests/integration/**'
+        # Integration tests require a live backend — excluded in CI
 
       - name: Build extension
         run: npm run build
