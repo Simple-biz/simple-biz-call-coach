@@ -57,23 +57,23 @@ describe('Intelligence Cache', () => {
     expect(result).toBeNull();
   });
 
-  it('returns null when cache is expired (>30s)', () => {
+  it('returns null when cache is expired (>5s)', () => {
     setCachedIntelligence('conv-123', mockIntelligence);
 
-    // Advance time past 30s expiry
+    // Advance time past 5s expiry
     const state = getCacheState();
-    state!.timestamp = Date.now() - 31_000;
+    state!.timestamp = Date.now() - 6_000;
 
     const result = getCachedIntelligence('conv-123');
     expect(result).toBeNull();
   });
 
-  it('returns cached data when within 30s window', () => {
+  it('returns cached data when within 5s window', () => {
     setCachedIntelligence('conv-123', mockIntelligence);
 
-    // Set timestamp to 20s ago (within 30s window)
+    // Set timestamp to 3s ago (within 5s window)
     const state = getCacheState();
-    state!.timestamp = Date.now() - 20_000;
+    state!.timestamp = Date.now() - 3_000;
 
     const result = getCachedIntelligence('conv-123');
     expect(result).toEqual(mockIntelligence);
