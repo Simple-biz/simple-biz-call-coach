@@ -1203,7 +1203,7 @@ async function connectAIBackend() {
       {
         source: 'devassist-call-coach',
         tabId: extensionState.tabId,
-        version: '2.1.0',
+        version: '2.2.0',
       }
     )
 
