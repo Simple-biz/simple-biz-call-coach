@@ -29,6 +29,10 @@ jobs:
 
       - name: Build extension
         run: npm run build
+        env:
+          VITE_DEEPGRAM_API_KEY: ${{ secrets.VITE_DEEPGRAM_API_KEY }}
+          VITE_BACKEND_WS_URL: ${{ secrets.VITE_BACKEND_WS_URL }}
+          VITE_BACKEND_API_KEY: ${{ secrets.VITE_BACKEND_API_KEY }}
         # Produces dist/ — packaged by @crxjs/vite-plugin for Manifest V3
 
       - name: Package extension zip
