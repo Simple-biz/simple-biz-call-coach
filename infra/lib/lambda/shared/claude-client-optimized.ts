@@ -62,14 +62,14 @@ export interface AITipResponse {
 // ============================================================================
 
 const SCRIPTS_GREETING = `## GREETING
-1. Basic Intro [ID: intro-basic]: "My name is [Agent], and my partner Bob and I are here; we're local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
+1. Basic Intro [ID: intro-basic]: "My name is [Agent], Bob and I are local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
    → USE WHEN: Customer asks "Who is this?" or "Who are you?" or at start of call
    → ALWAYS end the intro with a question so the agent has a natural follow-up.
 2. Familiar Opener: "Good morning again, can you hear me okay?"
 3. Targeted Opener: "Good morning, is [Name] available please?"
-4. Quick Intro: "Real quick though, my name is [Agent], and my partner Bob and I are here; we're local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
+4. Quick Intro: "Real quick though, my name is [Agent], Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → ALWAYS end with a question.
-5. Bob Transition (skip name): "My partner Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
+5. Bob Transition (skip name): "Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.`;
 
 const SCRIPTS_VALUE_PROP = `## VALUE PROPOSITION
@@ -83,14 +83,14 @@ const SCRIPTS_OBJECTION = `## OBJECTION HANDLING
 1. Have One/Busy [ID: obj-busy-or-have]: "You already got one though, or just busy right now to talk about it?"
    → USE WHEN: Customer says "We already have a website" or "I already have one" or "Not right now" or "Not at the moment"
    → DO NOT use when customer says "Not interested" or "I don't need a website" — see Respect Decline script below
-2. SEO Pivot: "That's great because we also optimize websites as well, especially with SEO, at super affordable costs. Would you mind if my partner Bob gives you a quick call to go over what we can do?"
+2. SEO Pivot: "That's great because we also optimize websites as well, especially with SEO, at super affordable costs. Would you mind if Bob gives you a quick call to go over what we can do?"
    → USE WHEN: Customer says they HAVE a website (positive tone). NOT when they describe a problem — use SEO Problem Empathy instead.
-3. SEO Affirmation: "Yeah, that's great that you already have one because we also optimize websites as well, especially with SEO. Would you mind if my partner Bob gives you a quick call later?"
-4. SEO Problem Empathy: "Oh, I hear you — SEO can be tricky. That's actually what we specialize in. Would you mind if my partner Bob gives you a quick call to walk you through some options?"
+3. SEO Affirmation: "Yeah, that's great that you already have one because we also optimize websites as well, especially with SEO. Would you mind if Bob gives you a quick call later?"
+4. SEO Problem Empathy: "Oh, I hear you — SEO can be tricky. That's actually what we specialize in. Would you mind if Bob gives you a quick call to walk you through some options?"
    → USE WHEN: Customer says their website has PROBLEMS (SEO, ranking, traffic). Empathize first — NEVER say "that's great" about a problem.
-5. Revamp Pivot: "Yeah, that's great that you already have a website because we also optimize or revamp them, especially with SEO. Would you mind if my partner Bob gives you a quick call later?"
-6. Digital Marketing Pivot: "Of course yeah. I was just about to say though [Name], we're a whole digital marketing company... and we can help you host, maintain or optimize it, especially with SEO. Would it be okay if my partner Bob gives you a quick call?"
-7. IP/Control Assurance: "Of course yeah. We definitely let our clienteles get full control of their own website. We believe in having it to all yourself and for your business. Would you mind if my partner Bob gives you a quick call to walk you through how that works?"
+5. Revamp Pivot: "Yeah, that's great that you already have a website because we also optimize or revamp them, especially with SEO. Would you mind if Bob gives you a quick call later?"
+6. Digital Marketing Pivot: "Of course yeah. I was just about to say though [Name], we're a whole digital marketing company... and we can help you host, maintain or optimize it, especially with SEO. Would it be okay if Bob gives you a quick call?"
+7. IP/Control Assurance: "Of course yeah. We definitely let our clienteles get full control of their own website. We believe in having it to all yourself and for your business. Would you mind if Bob gives you a quick call to walk you through how that works?"
 8. Respect Decline: "No problem. I do appreciate you taking my call. Have a great day."
    → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.`;
 
@@ -106,9 +106,9 @@ const SCRIPTS_CLOSING = `## CLOSING
 8. Ask + FOMO: "Would you mind if I can have Bob or his partner give you a quick call later? Just don't want you to miss out."
 9. Confirm Authority: "You're the owner? [Name]? ... and you're the person in charge of the website to talk about later just to confirm?"
 10. Pricing/Samples: "Would you mind if I could have Bob or his partner give you a quick call later today to talk about pricing and all these samples?"
-11. Pricing Redirect: "We're super affordable — my partner Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?"
+11. Pricing Redirect: "We're super affordable — Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?"
    → USE WHEN: Customer asks about pricing or cost. Do NOT give specific numbers — pricing details are Bob's job.
-12. Timeline Redirect: "My partner Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
+12. Timeline Redirect: "Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
    → USE WHEN: Customer asks about how long it takes.`;
 
 const SCRIPTS_AI_RECEPTIONIST = `## AI RECEPTIONIST (when talking to an automated system or receptionist)
@@ -184,9 +184,13 @@ function getScriptsForStage(stage: string): string {
 // ULTRA-COMPRESSED SYSTEM PROMPT (OPTIMIZED FOR SPEED)
 // ============================================================================
 
-const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get small business owner to agree to callback from agent's partner Bob.
+const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get small business owner to agree to callback from Bob (senior designer agent assists).
 
-BOB: Agent's business partner — always "my partner Bob". He handles pricing, technical details, and client consultations.
+BOB: Senior local website designer. Agent is Bob's assistant. IDENTITY FRAMING:
+  - Default pitch/intro: "Bob and I are local website designers" (peer tone, never reveal hierarchy upfront)
+  - Direct identity question ("who are you?", "are you the owner?", "what's your role?", "are you Bob?"): honestly say "I'm Bob's assistant" or "I assist Bob with his clients"
+  - Never position Bob as a partner — always just "Bob" or "Bob and I"
+Bob handles pricing, technical details, and client consultations.
 
 OUTPUT FORMAT (exactly):
 [HEADING]: 2-word title
@@ -204,10 +208,11 @@ INTENT RULES (priority order):
    - Specific time given ("call at 4", "tomorrow") → acknowledge it, ask for email.
    - "Another time"/"busy right now" → ask WHEN, don't assume "later today".
 3. Customer FRUSTRATED ("going in circles", "you already said that", "not listening", "runaround", "level with me", "dancin' around") → STOP. Acknowledge briefly. Pivot to Ask Callback or answer their actual question.
-4. Pricing/cost/timeline asked → redirect to Bob: "We're super affordable — my partner Bob can get into the details. Would you mind if he gives you a quick call?"
-5. Features/capabilities asked → "Definitely, my partner Bob can show you exactly how that works — would he be able to give you a quick call?"
-6. Wrong number/confused → correct politely, re-introduce as local website designers.
+4. Pricing/cost/timeline asked → redirect to Bob: "We're super affordable — Bob can get into the details. Would you mind if he gives you a quick call?"
+5. Features/capabilities asked → "Definitely, Bob can show you exactly how that works — would he be able to give you a quick call?"
+6. Wrong number/confused → correct politely, re-introduce: "Bob and I are local website designers in [area]".
 7. "Who is this?" → Basic Intro (if not already introduced).
+7a. "Are you the owner?" / "What's your role?" / "Are you Bob?" / "Who are you really?" → honestly answer "I'm Bob's assistant, I help him connect with local businesses" — then pivot back to value or callback.
 8. Open invitation ("go ahead", "I'm listening", "tell me about it") → Bob Transition if intro done, else Quick Intro.
 9. "What do you need?" / "I'm busy" → Affordable Hook.
 10. "Already have a website" → problems/SEO issues: SEO Problem Empathy. Positive/neutral: Have One/Busy.
@@ -586,7 +591,7 @@ function getFallbackSuggestion(stage: string, latency: number): AITipResponse {
     objection: {
       heading: 'Handle Objection',
       stage: 'OBJECTION_HANDLING',
-      suggestion: "Would you mind if my partner Bob gives you a quick call later to talk about what we can do for your website?"
+      suggestion: "Would you mind if Bob gives you a quick call later to talk about what we can do for your website?"
     },
     closing: {
       heading: 'Ask Callback',
