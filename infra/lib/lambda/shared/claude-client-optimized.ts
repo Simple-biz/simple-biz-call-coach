@@ -62,12 +62,12 @@ export interface AITipResponse {
 // ============================================================================
 
 const SCRIPTS_GREETING = `## GREETING
-1. Basic Intro [ID: intro-basic]: "My name is [Agent], and Bob and I are here; we're local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
+1. Basic Intro [ID: intro-basic]: "My name is [Agent], Bob and I are local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
    → USE WHEN: Customer asks "Who is this?" or "Who are you?" or at start of call
    → ALWAYS end the intro with a question so the agent has a natural follow-up.
 2. Familiar Opener: "Good morning again, can you hear me okay?"
 3. Targeted Opener: "Good morning, is [Name] available please?"
-4. Quick Intro: "Real quick though, my name is [Agent], and Bob and I are here; we're local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
+4. Quick Intro: "Real quick though, my name is [Agent], Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → ALWAYS end with a question.
 5. Bob Transition (skip name): "Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
    → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.`;
