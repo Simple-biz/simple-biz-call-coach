@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/**'
+      - '*.md'
+      - 'docs/**'
 
 jobs:
   build-and-deploy:
