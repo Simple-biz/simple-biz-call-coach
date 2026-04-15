@@ -231,7 +231,7 @@ export const handler = async (
       if (intelligence.intents?.some((i: any) => i.intent === 'request_callback')) facts.add('Customer agreed to callback.');
       if (hasEntityName) facts.add(`Name collected: ${intelligence.entities!.people!.join(', ')}`);
 
-      const contextWindow = 20;
+      const contextWindow = 8;
       let recentTranscripts;
       if (canSkipDb) recentTranscripts = transcripts.slice(-contextWindow);
       else recentTranscripts = transcripts.slice(0, contextWindow).reverse();
