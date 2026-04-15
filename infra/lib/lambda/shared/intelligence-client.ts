@@ -152,6 +152,13 @@ IMPORTANT extraction rules:
 - businessNames: Extract the CUSTOMER's business name. Do NOT include the agent's company name.
 - websiteStatus: Determine from the CUSTOMER's responses whether they currently have a website. "has_website" if they say they have one, "no_website" if they say they don't, "unknown" if not mentioned yet.
 
+⚠️ HOSTILE/FAKE INPUT FILTER — DO NOT extract these as entities (leave arrays empty for the affected field):
+- Emails containing profanity ("fuckoff@", "fuckyou@", "shitemail@") or dismissals ("none@", "nope@", "noemail@", "leavemealone@", "dontcall@", "nothanks@", "fake@", "test@test")
+- Names that are obvious placeholders ("John Doe", "Jane Doe", "Mickey Mouse", "Donald Duck") or single letters/profanity ("X", "A", "Asshole", "Dick")
+- Phone numbers matching reserved/fake patterns (555-0100 through 555-0199, 111-111-1111, 000-000-0000, 123-456-7890)
+- Any field given sarcastically in a hostile context (customer frustrated, profanity earlier in transcript)
+When these hostile patterns appear, add intent "not_interested" with high confidence instead.
+
 Common intents:interested, not_interested, pricing_inquiry, request_callback, objection, purchase_intent, information_seeking
 Common topics: pricing, services, website_optimization, SEO, marketing, scheduling, follow_up
 

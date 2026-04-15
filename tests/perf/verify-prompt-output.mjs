@@ -59,6 +59,48 @@ const SCENARIOS = [
       { speaker: 'caller', text: "Do you also do SEO? How does that work exactly?" },
     ],
   },
+  {
+    name: 'HOSTILE EMAIL — "fuckoff@gmail.com"',
+    transcripts: [
+      { speaker: 'agent', text: "Great, what's the best email to reach you at?" },
+      { speaker: 'caller', text: "Yeah my email is fuckoff@gmail.com" },
+    ],
+  },
+  {
+    name: 'DISMISSIVE EMAIL — "none@nothanks.com"',
+    transcripts: [
+      { speaker: 'agent', text: "What's your email?" },
+      { speaker: 'caller', text: "Uhh, email is none@nothanks.com" },
+    ],
+  },
+  {
+    name: 'FAKE NAME — "John Doe"',
+    transcripts: [
+      { speaker: 'agent', text: "And your name is?" },
+      { speaker: 'caller', text: "John Doe" },
+    ],
+  },
+  {
+    name: 'FAKE PHONE — "555-555-5555"',
+    transcripts: [
+      { speaker: 'agent', text: "What's a good callback number?" },
+      { speaker: 'caller', text: "555-555-5555" },
+    ],
+  },
+  {
+    name: 'SARCASTIC ACKNOWLEDGMENT',
+    transcripts: [
+      { speaker: 'agent', text: "Would Bob be able to give you a call later today?" },
+      { speaker: 'caller', text: "Yeah whatever just put me down, bye." },
+    ],
+  },
+  {
+    name: 'CONTROL — real email (should still work)',
+    transcripts: [
+      { speaker: 'agent', text: "Great, what's your email?" },
+      { speaker: 'caller', text: "It's sarah@plumbingco.com" },
+    ],
+  },
 ];
 
 function waitForMessage(ws, type, timeoutMs = 15000) {
@@ -118,12 +160,22 @@ function collectFullTip(ws, timeoutMs = 15000) {
   });
 }
 
-async function runScenario(ws, conversationId, scenario) {
+async function runScenario(ws, scenario) {
   console.log('\n' + '═'.repeat(70));
   console.log(`  SCENARIO: ${scenario.name}`);
   console.log('═'.repeat(70));
 
-  // Clear scenario by sending fresh transcripts
+  // FRESH conversation per scenario to avoid fact cache pollution
+  const startP = waitForMessage(ws, 'CONVERSATION_STARTED');
+  ws.send(JSON.stringify({
+    action: 'startConversation',
+    agentId: `verify-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    metadata: { timestamp: Date.now(), apiKey: API_KEY },
+  }));
+  const startResp = await startP;
+  const conversationId = startResp.payload.conversationId;
+
+  // Send transcripts for this scenario only
   for (const t of scenario.transcripts) {
     ws.send(JSON.stringify({
       action: 'transcript',
@@ -160,6 +212,9 @@ async function runScenario(ws, conversationId, scenario) {
     console.log(`[Script]: ${result.finalSuggestion}`);
   }
   console.log('  ---');
+
+  // Clean up
+  ws.send(JSON.stringify({ action: 'endConversation', conversationId, timestamp: Date.now() }));
 }
 
 async function main() {
@@ -175,26 +230,16 @@ async function main() {
     setTimeout(() => reject(new Error('timeout')), 15000);
   });
 
-  const startP = waitForMessage(ws, 'CONVERSATION_STARTED');
-  ws.send(JSON.stringify({
-    action: 'startConversation',
-    agentId: `verify-${Date.now()}`,
-    metadata: { timestamp: Date.now(), apiKey: API_KEY },
-  }));
-  const startResp = await startP;
-  const conversationId = startResp.payload.conversationId;
-  console.log(`Connected. Conversation: ${conversationId.slice(0, 8)}...`);
+  console.log(`Connected. Running ${SCENARIOS.length} scenarios with fresh conversations each.`);
 
   for (const scenario of SCENARIOS) {
     try {
-      await runScenario(ws, conversationId, scenario);
+      await runScenario(ws, scenario);
       await new Promise(r => setTimeout(r, 1000));
     } catch (err) {
       console.error(`  SCENARIO FAILED: ${err.message}`);
     }
   }
-
-  ws.send(JSON.stringify({ action: 'endConversation', conversationId, timestamp: Date.now() }));
   await new Promise(r => setTimeout(r, 500));
   ws.close(1000);
 
