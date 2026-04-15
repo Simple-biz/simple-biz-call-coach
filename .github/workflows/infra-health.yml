@@ -52,11 +52,13 @@ jobs:
 
       - name: Post health report as GitHub issue
         uses: actions/github-script@v7
+        env:
+          REPORT: ${{ steps.health.outputs.REPORT }}
         with:
           script: |
-            const report = `${{ steps.health.outputs.REPORT }}`;
+            const report = process.env.REPORT;
             const today = new Date().toISOString().split('T')[0];
-            const title = `Infra Health Report — ${today}`;
+            const title = `Infra Health Report - ${today}`;
 
             const issues = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
