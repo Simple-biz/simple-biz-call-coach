@@ -15,6 +15,7 @@ export interface WebSocketStackProps extends cdk.StackProps {
   callEventsTable: dynamodb.Table;
   rdsConnectionString: string;
   anthropicApiKey: string;
+  openaiApiKey: string;
   backendApiKey: string;
   callToolsWebhookSecret: string;
   vpcId: string;
@@ -36,6 +37,7 @@ export class WebSocketStack extends cdk.Stack {
       secretName: 'call-coach/api-keys',
       secretObjectValue: {
         ANTHROPIC_API_KEY: cdk.SecretValue.unsafePlainText(props.anthropicApiKey),
+        OPENAI_API_KEY: cdk.SecretValue.unsafePlainText(props.openaiApiKey),
         BACKEND_API_KEY: cdk.SecretValue.unsafePlainText(props.backendApiKey),
         CALLTOOLS_WEBHOOK_SECRET: cdk.SecretValue.unsafePlainText(props.callToolsWebhookSecret),
       },
@@ -48,6 +50,8 @@ export class WebSocketStack extends cdk.Stack {
       API_KEYS_SECRET_ARN: apiKeysSecret.secretArn,
       CLAUDE_HAIKU_MODEL: 'claude-haiku-4-5-20251001',
       CLAUDE_SONNET_MODEL: 'claude-sonnet-4-5-20250929',
+      OPENAI_MODEL: 'gpt-4.1-mini',
+      ANTHROPIC_TIMEOUT_MS: '5000',
       AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1'
     };
 

@@ -1,6 +1,15 @@
 // v4 — Haiku-only model, Bob Transition script
 import Anthropic from '@anthropic-ai/sdk';
 import { getSecret } from './secrets-client';
+import {
+  shouldFallback,
+  withTimeout,
+  logFallback,
+  FORCE_OPENAI_FALLBACK,
+  FAIL_ANTHROPIC_CALLS,
+  ANTHROPIC_TIMEOUT_MS,
+} from './fallback-utils';
+import { generateAITipStreamingOpenAI } from './openai-client';
 
 // Lazy-initialized Anthropic client (async due to Secrets Manager fetch)
 let anthropicClient: Anthropic | null = null;
@@ -118,6 +127,10 @@ const SCRIPTS_AI_RECEPTIONIST = `## AI RECEPTIONIST (when talking to an automate
   - If receptionist asks "How can I help?" → Ask for the owner/manager naturally. Keep it casual.
   - If receptionist offers to arrange a callback → Accept it naturally, mention Bob handles the website details.
   - If no one is available → Leave a message naturally — Caesar called, Bob can be reached for a quick chat.
+  - Never ask an AI/receptionist for business owner name, business name, or discovery details.
+  - Keep asks operational only: transfer to owner/manager OR callback routing/message.
+  - Good style: "Of course, no worries - could you connect me with whoever handles website decisions real quick?"
+  - Good style: "No problem at all - can you pass a quick message that Bob's website team called?"
   - Match their energy. If they're formal, be polite. If they're casual, be casual.
   - Keep it SHORT. Don't pitch the receptionist — they're not the decision-maker.`;
 
@@ -152,12 +165,12 @@ const SCRIPTS_CONVERSION = `## CONVERSION
  * Always includes ENGAGEMENT (universal fallback) and RESPECT DECLINE (via objection).
  * Adjacent stages are included to handle edge cases where stage detection is slightly off.
  */
-function getScriptsForStage(stage: string): string {
-  const sections: string[] = ['# MARK\'S QUALITY SCRIPTS (STAGE-FILTERED)\n'];
+export function getScriptsForStage(stage: string): string {
+  const sections: string[] = ['# MARK\'S QUALITY SCRIPTS (STAGE-FILTERED)\n', SCRIPTS_AI_RECEPTIONIST];
 
   switch (stage) {
     case 'greeting':
-      sections.push(SCRIPTS_GREETING, SCRIPTS_VALUE_PROP, SCRIPTS_AI_RECEPTIONIST, SCRIPTS_ENGAGEMENT);
+      sections.push(SCRIPTS_GREETING, SCRIPTS_VALUE_PROP, SCRIPTS_ENGAGEMENT);
       break;
     case 'discovery':
       sections.push(SCRIPTS_VALUE_PROP, SCRIPTS_OBJECTION, SCRIPTS_ENGAGEMENT);
@@ -184,7 +197,7 @@ function getScriptsForStage(stage: string): string {
 // ULTRA-COMPRESSED SYSTEM PROMPT (OPTIMIZED FOR SPEED)
 // ============================================================================
 
-const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get small business owner to agree to callback from Bob (senior designer agent assists).
+export const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get small business owner to agree to callback from Bob (senior designer agent assists).
 
 BOB: Senior local website designer. Agent is Bob's assistant. IDENTITY FRAMING:
   - Default pitch/intro: "Bob and I are local website designers" (peer tone, never reveal hierarchy upfront)
@@ -373,98 +386,147 @@ export async function generateAITip(request: AITipRequest): Promise<AITipRespons
 // STREAMING CLAUDE API CALL — pushes text chunks via callback
 // ============================================================================
 
+/**
+ * Internal Anthropic streaming implementation. Throws on any error so the
+ * outer wrapper can decide whether to fall back to OpenAI.
+ * Takes a `markFirstChunk` hook so the wrapper knows if any bytes reached the client.
+ */
+async function generateAITipStreamingAnthropicInternal(
+  request: AITipRequest,
+  onChunk: (delta: string) => Promise<void>,
+  markFirstChunk: () => void
+): Promise<AITipResponse> {
+  const startTime = Date.now();
+  const model = HAIKU_MODEL;
+
+  const userPrompt = buildCompressedPrompt(request);
+  const anthropic = await getAnthropicClient();
+
+  let fullText = '';
+
+  const stream = anthropic.messages.stream({
+    model,
+    max_tokens: 300,
+    temperature: 0.3,
+    system: [
+      {
+        type: 'text' as const,
+        text: SYSTEM_PROMPT_COMPRESSED,
+        cache_control: { type: 'ephemeral' as const }
+      },
+      {
+        type: 'text' as const,
+        text: getScriptsForStage(request.callStage),
+      }
+    ],
+    messages: [
+      { role: 'user' as const, content: userPrompt }
+    ]
+  });
+
+  let chunkBuffer = '';
+  for await (const event of stream) {
+    if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+      const text = event.delta.text;
+      fullText += text;
+      chunkBuffer += text;
+      if (chunkBuffer.length >= 20 || /[.!?,\n]$/.test(chunkBuffer)) {
+        markFirstChunk();
+        try {
+          await onChunk(chunkBuffer);
+        } catch (err) {
+          console.error('[Claude Stream] Error sending chunk:', err);
+        }
+        chunkBuffer = '';
+      }
+    }
+  }
+  if (chunkBuffer) {
+    markFirstChunk();
+    try {
+      await onChunk(chunkBuffer);
+    } catch (err) {
+      console.error('[Claude Stream] Error sending final chunk:', err);
+    }
+  }
+
+  const finalMessage = await stream.finalMessage();
+  const latency = Date.now() - startTime;
+
+  console.log('[Claude Stream] Full Response:');
+  console.log('=====================================');
+  console.log(fullText);
+  console.log('=====================================');
+
+  const cachedTokens = finalMessage.usage.cache_read_input_tokens || 0;
+  const totalInputTokens = finalMessage.usage.input_tokens + cachedTokens;
+  const cacheHitRate = totalInputTokens > 0 ? cachedTokens / totalInputTokens : 0;
+
+  const parsed = parseAITipResponse(fullText, request.callStage);
+
+  console.log(`[Claude Stream] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: Haiku`);
+
+  return {
+    ...parsed,
+    model: 'haiku',
+    latency,
+    cacheHitRate,
+    tokenMetrics: {
+      cached: cachedTokens,
+      input: finalMessage.usage.input_tokens,
+      output: finalMessage.usage.output_tokens
+    }
+  };
+}
+
+/**
+ * Public entry point — tries Anthropic first, falls back to OpenAI on server
+ * errors or timeout BEFORE any chunk has been sent to the client.
+ */
 export async function generateAITipStreaming(
   request: AITipRequest,
   onChunk: (delta: string) => Promise<void>
 ): Promise<AITipResponse> {
   const startTime = Date.now();
-  const model = HAIKU_MODEL;
+
+  let firstChunkEmitted = false;
+  const markFirstChunk = () => { firstChunkEmitted = true; };
+
+  // Force-fallback mode for testing
+  if (FORCE_OPENAI_FALLBACK) {
+    logFallback('tip', 'FORCE_OPENAI_FALLBACK=true');
+    return generateAITipStreamingOpenAI(request, onChunk);
+  }
 
   try {
-    const userPrompt = buildCompressedPrompt(request);
-    const anthropic = await getAnthropicClient();
-
-    let fullText = '';
-
-    const stream = anthropic.messages.stream({
-      model,
-      max_tokens: 300,
-      temperature: 0.3,
-      system: [
-        {
-          type: 'text' as const,
-          text: SYSTEM_PROMPT_COMPRESSED,
-          cache_control: { type: 'ephemeral' as const }
-        },
-        {
-          type: 'text' as const,
-          text: getScriptsForStage(request.callStage),
-        }
-      ],
-      messages: [
-        { role: 'user' as const, content: userPrompt }
-      ]
-    });
-
-    // Use for-await to properly handle async onChunk (sendToConnection)
-    // Buffer chunks to reduce WebSocket messages (~5 tokens per flush)
-    let chunkBuffer = '';
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-        const text = event.delta.text;
-        fullText += text;
-        chunkBuffer += text;
-        // Flush every ~5 tokens (word boundaries or punctuation)
-        if (chunkBuffer.length >= 20 || /[.!?,\n]$/.test(chunkBuffer)) {
-          try {
-            await onChunk(chunkBuffer);
-          } catch (err) {
-            console.error('[Claude Stream] Error sending chunk:', err);
-          }
-          chunkBuffer = '';
-        }
-      }
-    }
-    // Flush remaining buffer
-    if (chunkBuffer) {
-      try {
-        await onChunk(chunkBuffer);
-      } catch (err) {
-        console.error('[Claude Stream] Error sending final chunk:', err);
-      }
+    // Simulated-failure mode for testing
+    if (FAIL_ANTHROPIC_CALLS) {
+      const err: any = new Error('FAIL_ANTHROPIC_CALLS=true (simulated)');
+      err.status = 500;
+      throw err;
     }
 
-    const finalMessage = await stream.finalMessage();
-
-    const latency = Date.now() - startTime;
-
-    console.log('[Claude Stream] Full Response:');
-    console.log('=====================================');
-    console.log(fullText);
-    console.log('=====================================');
-
-    const cachedTokens = finalMessage.usage.cache_read_input_tokens || 0;
-    const totalInputTokens = finalMessage.usage.input_tokens + cachedTokens;
-    const cacheHitRate = totalInputTokens > 0 ? cachedTokens / totalInputTokens : 0;
-
-    const parsed = parseAITipResponse(fullText, request.callStage);
-
-    console.log(`[Claude Stream] Performance: ${latency}ms, Cache: ${(cacheHitRate * 100).toFixed(1)}%, Model: Haiku`);
-
-    return {
-      ...parsed,
-      model: 'haiku',
-      latency,
-      cacheHitRate,
-      tokenMetrics: {
-        cached: cachedTokens,
-        input: finalMessage.usage.input_tokens,
-        output: finalMessage.usage.output_tokens
-      }
-    };
-
+    return await withTimeout(
+      generateAITipStreamingAnthropicInternal(request, onChunk, markFirstChunk),
+      ANTHROPIC_TIMEOUT_MS,
+      'Anthropic stream'
+    );
   } catch (error: any) {
-    console.error('[Claude Stream] API Error:', error);
+    // Fall back only if no bytes reached the client AND the error is retryable
+    if (!firstChunkEmitted && shouldFallback(error)) {
+      logFallback('tip', error?.code || error?.name || `status:${error?.status}` || 'unknown', {
+        message: String(error?.message || '').substring(0, 200),
+      });
+      try {
+        return await generateAITipStreamingOpenAI(request, onChunk);
+      } catch (fallbackErr: any) {
+        console.error('[OpenAI Fallback] Also failed:', fallbackErr);
+        return getFallbackSuggestion(request.callStage, Date.now() - startTime);
+      }
+    }
+
+    // Either we already streamed something, or this error shouldn't trigger fallback
+    console.error('[Claude Stream] Error (no fallback):', error);
     return getFallbackSuggestion(request.callStage, Date.now() - startTime);
   }
 }
@@ -473,7 +535,7 @@ export async function generateAITipStreaming(
 // HELPER FUNCTIONS
 // ============================================================================
 
-function buildCompressedPrompt(request: AITipRequest): string {
+export function buildCompressedPrompt(request: AITipRequest): string {
   // Optimized prompt with proper context window
   const parts: string[] = [
     `Stage: ${request.callStage}`,
@@ -503,6 +565,7 @@ function buildCompressedPrompt(request: AITipRequest): string {
   // so the model always sees what just happened, not ancient history
   if (request.recentTranscript) {
     const transcript = request.recentTranscript;
+    const aiReceptionistDetected = /\b(ai receptionist|virtual receptionist|automated (?:system|receptionist)|assist(?:ing)? with appointments|scheduling appointments|how can i assist you|team call you back|team reach out)\b/i.test(transcript);
     const maxLen = 2200;
     const truncated = transcript.length > maxLen 
       ? '...\n' + transcript.substring(transcript.length - maxLen)
@@ -515,6 +578,14 @@ function buildCompressedPrompt(request: AITipRequest): string {
     if (lines.length > 3) {
       const latest = lines.slice(-3).join('\n');
       parts.push(`\n⚠️ LATEST EXCHANGE (your tip MUST respond to THIS — not older messages):\n${latest}`);
+    }
+
+    if (aiReceptionistDetected) {
+      parts.push(`\n🚨 RECEPTIONIST MODE DETECTED (hard rule):`);
+      parts.push(`- Customer is a gatekeeper/AI receptionist, not the business owner.`);
+      parts.push(`- Do NOT ask for owner/business name or run discovery questions with receptionist.`);
+      parts.push(`- Next line must either: (a) ask for transfer to owner/decision-maker, OR (b) accept callback routing and leave a short message for Bob's website team.`);
+      parts.push(`- Keep it casual, short, and operational.`);
     }
   }
 
@@ -532,7 +603,7 @@ function buildCompressedPrompt(request: AITipRequest): string {
   return parts.join('\n');
 }
 
-function parseAITipResponse(text: string, callStage: string): Omit<AITipResponse, 'model' | 'latency' | 'cacheHitRate' | 'tokenMetrics'> {
+export function parseAITipResponse(text: string, callStage: string): Omit<AITipResponse, 'model' | 'latency' | 'cacheHitRate' | 'tokenMetrics'> {
   const extract = (pattern: RegExp) => {
     const match = text.match(pattern);
     return match ? match[1].trim() : '';
@@ -588,7 +659,7 @@ function getDefaultHeading(stage: string): string {
   return headings[stage] || 'Next Step';
 }
 
-function getFallbackSuggestion(stage: string, latency: number): AITipResponse {
+export function getFallbackSuggestion(stage: string, latency: number): AITipResponse {
   const fallbacks: Record<string, { heading: string; stage: string; suggestion: string }> = {
     greeting: {
       heading: 'Greet Prospect',

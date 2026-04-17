@@ -1,6 +1,6 @@
 {
   "name": "devassist-call-coach",
-  "version": "2.2.5",
+  "version": "2.2.6",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -42,6 +42,7 @@
     "@vitest/ui": "^4.0.16",
     "autoprefixer": "^10.4.21",
     "jsdom": "^27.3.0",
+    "openai": "^6.34.0",
     "playwright": "^1.58.2",
     "postcss": "^8.5.6",
     "tailwindcss": "^4.1.16",

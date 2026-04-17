@@ -1,5 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getSecret } from './secrets-client';
+import {
+  shouldFallback,
+  withTimeout,
+  logFallback,
+  FORCE_OPENAI_FALLBACK,
+  FAIL_ANTHROPIC_CALLS,
+  ANTHROPIC_TIMEOUT_MS,
+} from './fallback-utils';
+import { generateConversationIntelligenceOpenAI } from './openai-client';
 
 /**
  * Intelligence Client - Conversation Analysis using Claude Haiku 4.5
@@ -93,9 +102,73 @@ export interface IntelligenceResult {
 }
 
 /**
- * Generate conversation intelligence using Claude Haiku 4.5
+ * Public entry point — tries Anthropic first, falls back to OpenAI on
+ * server errors or timeout.
  */
 export async function generateConversationIntelligence(params: {
+  conversationId: string;
+  transcripts: IntelligenceTranscript[];
+}): Promise<IntelligenceResult> {
+  // Force-fallback mode for testing
+  if (FORCE_OPENAI_FALLBACK) {
+    logFallback('intelligence', 'FORCE_OPENAI_FALLBACK=true');
+    return generateConversationIntelligenceOpenAI(params);
+  }
+
+  try {
+    // Simulated-failure mode for testing
+    if (FAIL_ANTHROPIC_CALLS) {
+      const err: any = new Error('FAIL_ANTHROPIC_CALLS=true (simulated)');
+      err.status = 500;
+      throw err;
+    }
+
+    return await withTimeout(
+      generateConversationIntelligenceAnthropic(params),
+      ANTHROPIC_TIMEOUT_MS,
+      'Anthropic intelligence'
+    );
+  } catch (error: any) {
+    if (shouldFallback(error)) {
+      logFallback('intelligence', error?.code || error?.name || `status:${error?.status}` || 'unknown', {
+        message: String(error?.message || '').substring(0, 200),
+      });
+      try {
+        return await generateConversationIntelligenceOpenAI(params);
+      } catch (fallbackErr: any) {
+        console.error('[OpenAI Intelligence Fallback] Also failed:', fallbackErr);
+        return getNeutralIntelligenceResult();
+      }
+    }
+
+    console.error('[Intelligence] Error (no fallback):', error);
+    return getNeutralIntelligenceResult();
+  }
+}
+
+function getNeutralIntelligenceResult(): IntelligenceResult {
+  return {
+    sentiment: { label: 'neutral', score: 0, averageScore: 0 },
+    intents: [],
+    topics: [],
+    summary: 'Intelligence analysis unavailable',
+    entities: {
+      businessNames: [],
+      contactInfo: { emails: [], phoneNumbers: [], urls: [] },
+      locations: [],
+      dates: [],
+      people: [],
+      websiteStatus: 'unknown',
+    },
+    model: HAIKU_MODEL,
+  };
+}
+
+/**
+ * Internal Anthropic implementation. Throws on error so the outer wrapper
+ * can decide whether to fall back.
+ */
+async function generateConversationIntelligenceAnthropic(params: {
   conversationId: string;
   transcripts: IntelligenceTranscript[];
 }): Promise<IntelligenceResult> {
@@ -167,11 +240,10 @@ Return ONLY the JSON object, no other text.`;
   // User prompt contains only the dynamic conversation text
   const userPrompt = `Analyze this sales conversation:\n\n${conversationText}`;
 
-  try {
-    const client = await getAnthropicClient();
+  const client = await getAnthropicClient();
 
-    const startTime = Date.now();
-    const response = await client.messages.create({
+  const startTime = Date.now();
+  const response = await client.messages.create({
       model: HAIKU_MODEL,
       max_tokens: 1024,
       temperature: 0, // Deterministic for consistent analysis
@@ -238,45 +310,16 @@ Return ONLY the JSON object, no other text.`;
       model: HAIKU_MODEL
     };
 
-    console.log(`[Intelligence] Analysis complete:`, {
-      sentiment: result.sentiment.label,
-      intentCount: result.intents.length,
-      topicCount: result.topics.length,
-      entityCount: {
-        businesses: result.entities.businessNames.length,
-        people: result.entities.people.length,
-        locations: result.entities.locations.length
-      }
-    });
+  console.log(`[Intelligence] Analysis complete:`, {
+    sentiment: result.sentiment.label,
+    intentCount: result.intents.length,
+    topicCount: result.topics.length,
+    entityCount: {
+      businesses: result.entities.businessNames.length,
+      people: result.entities.people.length,
+      locations: result.entities.locations.length
+    }
+  });
 
-    return result;
-
-  } catch (error: any) {
-    console.error('[Intelligence] Error generating intelligence:', error);
-
-    // Return fallback intelligence on error
-    return {
-      sentiment: {
-        label: 'neutral',
-        score: 0,
-        averageScore: 0
-      },
-      intents: [],
-      topics: [],
-      summary: 'Intelligence analysis unavailable',
-      entities: {
-        businessNames: [],
-        contactInfo: {
-          emails: [],
-          phoneNumbers: [],
-          urls: []
-        },
-        locations: [],
-        dates: [],
-        people: [],
-        websiteStatus: 'unknown'
-      },
-      model: HAIKU_MODEL
-    };
-  }
+  return result;
 }

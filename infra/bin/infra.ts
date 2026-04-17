@@ -14,6 +14,7 @@ const app = new cdk.App();
 // Read environment variables
 const rdsConnectionString = process.env.DATABASE_URL || '';
 const anthropicApiKey = process.env.ANTHROPIC_API_KEY || '';
+const openaiApiKey = process.env.OPENAI_API_KEY || '';
 const backendApiKey = process.env.BACKEND_API_KEY || '';
 const callToolsWebhookSecret = process.env.CALLTOOLS_WEBHOOK_SECRET || '';
 const alertEmail = process.env.ALERT_EMAIL || 'cob@example.com';
@@ -30,6 +31,10 @@ if (!rdsConnectionString) {
 
 if (!anthropicApiKey) {
   throw new Error('ANTHROPIC_API_KEY environment variable is required');
+}
+
+if (!openaiApiKey) {
+  throw new Error('OPENAI_API_KEY environment variable is required (used as fallback when Anthropic is down)');
 }
 
 if (!vpcId || privateSubnetIds.length === 0 || !rdsSecurityGroupId) {
@@ -56,6 +61,7 @@ const webSocketStack = new WebSocketStack(app, 'DevAssist-WebSocket', {
   callEventsTable: databaseStack.callEventsTable,
   rdsConnectionString,
   anthropicApiKey,
+  openaiApiKey,
   backendApiKey,
   callToolsWebhookSecret,
   vpcId,
