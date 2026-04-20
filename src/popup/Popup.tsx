@@ -275,6 +275,8 @@ export default function Popup() {
         try {
           await chrome.sidePanel.open({ windowId: tab.windowId })
           console.log('✅ [Popup] Side panel opened successfully')
+          // Close popup so agent doesn't re-click Start Coaching
+          window.close()
         } catch (sidePanelError) {
           console.warn('⚠️ [Popup] Could not open side panel:', sidePanelError)
           // Side panel might already be open, this is not critical
