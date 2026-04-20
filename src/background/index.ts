@@ -119,8 +119,9 @@ let keepAliveInterval: number | null = null
 // LOCAL CALL HISTORY — save transcripts to IndexedDB on CALL_ENDED
 // ============================================================================
 
-// Track call start time so we can record duration when the call ends
+// Track call start time + destination so we can attach them to the history record on hang-up
 let currentCallStartedAt: number | null = null;
+let currentCallDestination: string | null = null;
 
 async function saveCurrentCallToHistory(): Promise<void> {
   try {
@@ -153,7 +154,7 @@ async function saveCurrentCallToHistory(): Promise<void> {
       agentEmail: extensionState.userEmail || 'unknown',
       startedAt,
       endedAt,
-      destination: undefined, // populated from webhook payload in calling handler if available
+      destination: currentCallDestination ?? undefined,
       transcript: finalEntries,
       intelligence: extensionState.latestIntelligence ?? null,
       entities: extensionState.latestEntities ?? null,
@@ -294,6 +295,15 @@ chrome.runtime.onConnect.addListener(port => {
       if (message.type === 'CALL_STARTED') {
         console.log('📞 [Background] Call STARTED detected (via port)')
 
+        // Track call start time + clear previous call's history fields
+        currentCallStartedAt = Date.now()
+        currentCallDestination = message.destination || null
+        extensionState.latestIntelligence = null
+        extensionState.latestEntities = null
+        if (currentCallDestination) {
+          console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
+        }
+
         // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
         console.log('🧹 [Background] Clearing ALL data from previous call')
         extensionState.transcriptions = []
@@ -356,6 +366,7 @@ chrome.runtime.onConnect.addListener(port => {
         const digits = message.destination?.replace(/\D/g, '') || ''
         if (digits.length >= 10) {
           expectedDestination = digits
+          currentCallDestination = message.destination || digits
           console.log(`📱 [Background] Expected destination set: ${digits}`)
         }
       }
@@ -599,11 +610,14 @@ async function processMessage(message: any, sender: any) {
         return
       }
 
-      // Track call start time for local history record
+      // Track call start time + clear previous call's history fields
       currentCallStartedAt = Date.now()
-      // Clear stashed intelligence from previous call
+      currentCallDestination = message.destination || null
       extensionState.latestIntelligence = null
       extensionState.latestEntities = null
+      if (currentCallDestination) {
+        console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
+      }
 
       // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
       console.log('🧹 [Background] Clearing ALL data from previous call')
@@ -1184,6 +1198,11 @@ async function connectAIBackend() {
 
     // Webhook STATUS_UPDATE listener (call start/end from CallTools resthook)
     awsWebSocketService.setStatusUpdateListener(async (payload) => {
+      // Capture destination for history whenever we see it
+      if (payload.destination) {
+        currentCallDestination = payload.destination
+      }
+
       if (payload.event === 'CALL_STARTED') {
         // Already on a call — enrich with callId if within 15s
         if (extensionState.isOnCall) {

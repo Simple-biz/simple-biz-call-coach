@@ -80,28 +80,48 @@ export function HistoryTab({ agentEmail }: HistoryTabProps) {
             <div className="sticky top-0 px-4 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-medium text-gray-500 uppercase">
               {label}
             </div>
-            {items.map(call => (
-              <button
-                key={call.conversationId}
-                onClick={() => setSelected(call)}
-                className="w-full flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-left transition-colors"
-              >
-                <Phone className="w-4 h-4 text-gray-400 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-                    {call.destination || 'Unknown number'}
+            {items.map(call => {
+              const label = getCallLabel(call);
+              const outcome = getOutcomeLabel(call);
+              const sentiment = call.intelligence?.sentiment?.label;
+
+              return (
+                <button
+                  key={call.conversationId}
+                  onClick={() => setSelected(call)}
+                  className="w-full flex items-center gap-3 px-4 py-3 border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 text-left transition-colors"
+                >
+                  <Phone className="w-4 h-4 text-gray-400 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {label}
+                    </div>
+                    {(outcome || sentiment) && (
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {outcome && (
+                          <span className="text-xs font-medium text-[#1B1F6B] dark:text-blue-300">
+                            {outcome}
+                          </span>
+                        )}
+                        {sentiment && (
+                          <span className={`text-xs font-medium ${getSentimentClass(sentiment)}`}>
+                            · {capitalize(sentiment)}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
+                      <span>{formatTime(call.endedAt)}</span>
+                      <span>·</span>
+                      <span>{formatDuration(call.startedAt, call.endedAt)}</span>
+                      <span>·</span>
+                      <span>{call.transcript.length} lines</span>
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500 flex items-center gap-2 mt-0.5">
-                    <span>{formatTime(call.endedAt)}</span>
-                    <span>·</span>
-                    <span>{formatDuration(call.startedAt, call.endedAt)}</span>
-                    <span>·</span>
-                    <span>{call.transcript.length} lines</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
-              </button>
-            ))}
+                  <ChevronRight className="w-4 h-4 text-gray-400 shrink-0" />
+                </button>
+              );
+            })}
           </div>
         ))}
       </div>
@@ -155,4 +175,67 @@ function formatDuration(startedAt: number, endedAt: number): string {
   const s = seconds % 60;
   if (m === 0) return `${s}s`;
   return `${m}m ${s.toString().padStart(2, '0')}s`;
+}
+
+// ── Call labeling helpers ──
+
+function getCallLabel(call: CallHistoryRecord): string {
+  // Priority: phone > customer name > business > date/time fallback
+  if (call.destination) return call.destination;
+
+  const person = call.entities?.people?.[0];
+  if (person) return person;
+
+  const business = call.entities?.businessNames?.[0];
+  if (business) return business;
+
+  // Final fallback: date/time
+  const d = new Date(call.endedAt);
+  return d.toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Derive a short outcome label from intents + website status.
+ * Returns null if there's nothing meaningful to show.
+ */
+function getOutcomeLabel(call: CallHistoryRecord): string | null {
+  const intents = call.intelligence?.intents || [];
+  if (intents.length === 0) return null;
+
+  // Sort by confidence, pick top
+  const top = [...intents].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
+  if (!top) return null;
+
+  const map: Record<string, string> = {
+    request_callback: 'Callback agreed',
+    not_interested: 'Not interested',
+    interested: 'Interested',
+    pricing_inquiry: 'Asked pricing',
+    objection: 'Objection',
+    purchase_intent: 'Buying signal',
+    information_seeking: 'Info gathering',
+  };
+
+  return map[top.intent] || capitalize(top.intent.replace(/_/g, ' '));
+}
+
+function getSentimentClass(sentiment: string): string {
+  switch (sentiment.toLowerCase()) {
+    case 'positive':
+      return 'text-green-600 dark:text-green-400';
+    case 'negative':
+      return 'text-red-600 dark:text-red-400';
+    default:
+      return 'text-gray-500';
+  }
+}
+
+function capitalize(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
