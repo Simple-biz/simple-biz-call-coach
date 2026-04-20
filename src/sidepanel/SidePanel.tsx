@@ -11,6 +11,7 @@ import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption } from "@
 import { ChatThread } from "@/components/ChatThread";
 import { IntelligenceDisplay } from "@/components/IntelligenceDisplay";
 import { SessionStats } from "@/components/SessionStats";
+import { HistoryTab } from "@/components/HistoryTab";
 import { pttDeepgramService, type PTTStatus } from "@/services/ptt-deepgram.service";
 import { useSettingsStore } from "@/stores/settings-store";
 
@@ -28,6 +29,10 @@ export default function SidePanel() {
   const [deepgramStatus, setDeepgramStatus] =
     useState<DeepgramStatus>("disconnected");
   const isLoadingScripts = useCallStore((s) => s.isGeneratingTip);
+
+  // View mode: Live coaching OR Call History
+  const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
+  const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Sandbox mode: Customer input (text)
   const [customerMessage, setCustomerMessage] = useState('');
@@ -51,6 +56,11 @@ export default function SidePanel() {
     // Load persisted state on mount
     useCallStore.getState().loadFromStorage();
     console.log("📂 [SidePanel] Loading state from storage");
+
+    // Load user email for per-agent history filtering
+    chrome.storage.local.get(['userEmail'], (result: { userEmail?: string }) => {
+      if (result.userEmail) setUserEmail(result.userEmail);
+    });
 
     // Load Developer Mode setting from storage and sync with environment
     chrome.storage.local.get(['developerModeEnabled', 'deepgramApiKey'], (result: { developerModeEnabled?: boolean; deepgramApiKey?: string }) => {
@@ -814,8 +824,39 @@ export default function SidePanel() {
         </div>
       </div>
 
-      {/* DUAL-VIEW MAIN CONTENT */}
-      {environment === 'sandbox' ? (
+      {/* Live / History Toggle */}
+      <div className="flex border-b border-[#E0E4E8] bg-white">
+        <button
+          onClick={() => setViewMode('live')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${
+            viewMode === 'live'
+              ? 'text-[#1B1F6B] border-b-2 border-[#1B1F6B]'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Live
+        </button>
+        <button
+          onClick={() => setViewMode('history')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${
+            viewMode === 'history'
+              ? 'text-[#1B1F6B] border-b-2 border-[#1B1F6B]'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          History
+        </button>
+      </div>
+
+      {/* HISTORY VIEW */}
+      {viewMode === 'history' && (
+        <div className="flex-1 overflow-hidden">
+          <HistoryTab agentEmail={userEmail} />
+        </div>
+      )}
+
+      {/* DUAL-VIEW MAIN CONTENT (Live) */}
+      {viewMode === 'live' && (environment === 'sandbox' ? (
         /* ========== SANDBOX MODE VIEW ========== */
         <div className="flex-1 overflow-y-auto flex flex-col">
           {/* Sandbox Header */}
@@ -1029,7 +1070,7 @@ export default function SidePanel() {
             />
           </div>
         </div>
-      )}
+      ))}
 
       {/* Footer Stats */}
       {!threadExpanded && (transcriptions.length > 0 || callState === "active") && (
