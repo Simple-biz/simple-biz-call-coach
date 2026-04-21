@@ -1,5 +1,6 @@
 import { ArrowLeft, Phone, Download } from 'lucide-react';
 import type { CallHistoryRecord, HistoryIntelligence, HistoryEntities } from '@/utils/history-store';
+import { downloadCallAsText, downloadCallAsJSON } from '@/utils/history-export';
 
 interface TranscriptDetailProps {
   record: CallHistoryRecord;
@@ -44,7 +45,7 @@ export function TranscriptDetail({ record, onBack }: TranscriptDetailProps) {
           </div>
         </div>
         <button
-          onClick={() => downloadAsText(record, label)}
+          onClick={() => downloadCallAsText(record, label)}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-[#1B1F6B] hover:bg-[#14174f] text-white rounded transition-colors"
           title="Download as text"
         >
@@ -52,7 +53,7 @@ export function TranscriptDetail({ record, onBack }: TranscriptDetailProps) {
           TXT
         </button>
         <button
-          onClick={() => downloadAsJSON(record, label)}
+          onClick={() => downloadCallAsJSON(record, label)}
           className="flex items-center gap-1 px-2 py-1 text-xs bg-[#1B1F6B] hover:bg-[#14174f] text-white rounded transition-colors"
           title="Download as JSON"
         >
@@ -185,93 +186,4 @@ function formatWebsiteStatus(status: 'has_website' | 'no_website' | 'unknown' | 
   return '--';
 }
 
-// ── Downloads ──
-
-function safeFilename(s: string): string {
-  return s.replace(/[^a-z0-9\-_]/gi, '_').slice(0, 60);
-}
-
-function downloadBlob(content: string, filename: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function downloadAsText(record: CallHistoryRecord, label: string) {
-  const endedDate = new Date(record.endedAt);
-  const durationSec = Math.max(0, Math.round((record.endedAt - record.startedAt) / 1000));
-  const m = Math.floor(durationSec / 60);
-  const s = durationSec % 60;
-  const durationStr = m === 0 ? `${s}s` : `${m}m ${s.toString().padStart(2, '0')}s`;
-
-  let text = `Call Transcript Export\n`;
-  text += `Call: ${label}\n`;
-  text += `Date: ${endedDate.toLocaleString()}\n`;
-  text += `Duration: ${durationStr}\n`;
-  text += `Total lines: ${record.transcript.length}\n`;
-
-  // Intelligence + entities dashboard
-  if (record.intelligence || record.entities) {
-    text += `\n${'='.repeat(50)}\n`;
-    text += `CONVERSATION INTELLIGENCE\n`;
-    text += `${'='.repeat(50)}\n\n`;
-
-    const s = record.intelligence?.sentiment;
-    if (s?.label) {
-      const scoreStr = typeof s.score === 'number' ? ` (${Math.round(s.score * 100)}% confidence)` : '';
-      text += `Sentiment: ${s.label}${scoreStr}\n`;
-    }
-
-    const e = record.entities;
-    if (e) {
-      if (e.businessNames?.length) text += `Business: ${e.businessNames.join(', ')}\n`;
-      if (e.websiteStatus && e.websiteStatus !== 'unknown') {
-        text += `Website Status: ${e.websiteStatus === 'has_website' ? 'Has Website' : 'No Website'}\n`;
-      }
-      if (e.contactInfo?.phoneNumbers?.length) text += `Phone: ${e.contactInfo.phoneNumbers.join(', ')}\n`;
-      if (e.contactInfo?.emails?.length) text += `Email: ${e.contactInfo.emails.join(', ')}\n`;
-      if (e.contactInfo?.urls?.length) text += `Website: ${e.contactInfo.urls.join(', ')}\n`;
-      if (e.locations?.length) text += `Location: ${e.locations.join(', ')}\n`;
-      if (e.dates?.length) text += `Dates: ${e.dates.join(', ')}\n`;
-      if (e.people?.length) text += `People: ${e.people.join(', ')}\n`;
-    }
-
-    if (record.intelligence?.intents?.length) {
-      text += `Intents: ${record.intelligence.intents.map(i => i.intent).join(', ')}\n`;
-    }
-    if (record.intelligence?.topics?.length) {
-      text += `Topics: ${record.intelligence.topics.map(t => t.topic).join(', ')}\n`;
-    }
-    if (record.intelligence?.summary) {
-      text += `\nSummary: ${record.intelligence.summary}\n`;
-    }
-  }
-
-  text += `\n${'='.repeat(50)}\n`;
-  text += `TRANSCRIPT\n`;
-  text += `${'='.repeat(50)}\n\n`;
-
-  record.transcript.forEach((entry) => {
-    const time = new Date(entry.timestamp).toLocaleTimeString(undefined, {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-    const speaker = entry.speaker === 'agent' ? 'Agent' : 'Customer';
-    text += `[${time}] ${speaker}: ${entry.text}\n\n`;
-  });
-
-  const dateStr = endedDate.toISOString().slice(0, 10);
-  downloadBlob(text, `call-${safeFilename(label)}-${dateStr}.txt`, 'text/plain');
-}
-
-function downloadAsJSON(record: CallHistoryRecord, label: string) {
-  const endedDate = new Date(record.endedAt);
-  const json = JSON.stringify(record, null, 2);
-  const dateStr = endedDate.toISOString().slice(0, 10);
-  downloadBlob(json, `call-${safeFilename(label)}-${dateStr}.json`, 'application/json');
-}
+// Download helpers now live in @/utils/history-export (reused across views)
