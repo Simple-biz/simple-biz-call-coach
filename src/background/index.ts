@@ -25,6 +25,7 @@ console.log('🚀 [Background] Service worker started')
 // Import AWS WebSocket service for real-time coaching
 // Import AI Backend Service (Legacy Socket.io for Elastic Beanstalk fallback)
 import { awsWebSocketService } from '@/services/aws-websocket.service'
+import { saveTranscript, pruneOldTranscripts } from '@/utils/history-store'
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -64,6 +65,8 @@ interface ExtensionState {
   callToolsCallId?: string | null
   callDetectionSource?: 'webhook' | 'dom' | null
   coachingPending?: boolean
+  latestIntelligence?: any | null
+  latestEntities?: any | null
 }
 
 // Webhook destination matching — content script reports the number being dialed
@@ -111,6 +114,60 @@ chrome.storage.local.get(['coachingPending', 'userEmail', 'isAuthenticated']).th
 
 // Keep-alive mechanism
 let keepAliveInterval: number | null = null
+
+// ============================================================================
+// LOCAL CALL HISTORY — save transcripts to IndexedDB on CALL_ENDED
+// ============================================================================
+
+// Track call start time + destination so we can attach them to the history record on hang-up
+let currentCallStartedAt: number | null = null;
+let currentCallDestination: string | null = null;
+
+async function saveCurrentCallToHistory(): Promise<void> {
+  try {
+    const transcripts = extensionState.transcriptions || [];
+    const finalEntries = transcripts
+      .filter((t: TranscriptionEntry) => t.isFinal && t.transcript)
+      .map((t: TranscriptionEntry) => ({
+        // offscreen emits 'agent' | 'caller' — normalize 'caller' → 'customer'
+        speaker: (t.speaker === 'agent' ? 'agent' : 'customer') as 'agent' | 'customer',
+        text: t.transcript,
+        timestamp: t.timestamp,
+      }));
+
+    if (finalEntries.length === 0) {
+      console.log('[History] No final transcripts to save — skipping');
+      return;
+    }
+
+    const conversationId = extensionState.conversationId;
+    if (!conversationId) {
+      console.log('[History] No conversationId — skipping save');
+      return;
+    }
+
+    const endedAt = Date.now();
+    const startedAt = currentCallStartedAt ?? extensionState.startTime ?? endedAt;
+
+    await saveTranscript({
+      conversationId,
+      agentEmail: extensionState.userEmail || 'unknown',
+      startedAt,
+      endedAt,
+      destination: currentCallDestination ?? undefined,
+      transcript: finalEntries,
+      intelligence: extensionState.latestIntelligence ?? null,
+      entities: extensionState.latestEntities ?? null,
+    });
+  } catch (err) {
+    console.warn('[History] saveCurrentCallToHistory failed:', err);
+  }
+}
+
+// Prune old transcripts on startup (fire-and-forget)
+pruneOldTranscripts().catch(err =>
+  console.warn('[History] startup prune failed:', err)
+);
 
 // ============================================================================
 // AUTO-ANALYSIS LOOP — intelligence updates only (tips via streaming on click)
@@ -238,6 +295,15 @@ chrome.runtime.onConnect.addListener(port => {
       if (message.type === 'CALL_STARTED') {
         console.log('📞 [Background] Call STARTED detected (via port)')
 
+        // Track call start time + clear previous call's history fields
+        currentCallStartedAt = Date.now()
+        currentCallDestination = message.destination || null
+        extensionState.latestIntelligence = null
+        extensionState.latestEntities = null
+        if (currentCallDestination) {
+          console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
+        }
+
         // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
         console.log('🧹 [Background] Clearing ALL data from previous call')
         extensionState.transcriptions = []
@@ -285,16 +351,22 @@ chrome.runtime.onConnect.addListener(port => {
 
       if (message.type === 'CALL_ENDED') {
         console.log('📞 [Background] Call ENDED detected (via port)')
+
+        // Save transcript to local history (fire-and-forget)
+        saveCurrentCallToHistory()
+
         await updateExtensionState({ isOnCall: false })
         await handleCallEnd(tabId)
         stopAutoAnalysisLoop();
         stopKeepAlive()
+        currentCallStartedAt = null
       }
 
       if (message.type === 'DESTINATION_NUMBER_DETECTED') {
         const digits = message.destination?.replace(/\D/g, '') || ''
         if (digits.length >= 10) {
           expectedDestination = digits
+          currentCallDestination = message.destination || digits
           console.log(`📱 [Background] Expected destination set: ${digits}`)
         }
       }
@@ -538,6 +610,15 @@ async function processMessage(message: any, sender: any) {
         return
       }
 
+      // Track call start time + clear previous call's history fields
+      currentCallStartedAt = Date.now()
+      currentCallDestination = message.destination || null
+      extensionState.latestIntelligence = null
+      extensionState.latestEntities = null
+      if (currentCallDestination) {
+        console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
+      }
+
       // ✅ CLEAR ALL PREVIOUS CALL DATA (fresh start for new call)
       console.log('🧹 [Background] Clearing ALL data from previous call')
       extensionState.transcriptions = []
@@ -608,6 +689,9 @@ async function processMessage(message: any, sender: any) {
     case 'CALL_ENDED':
       console.log('📞 [Background] Call ENDED detected - retaining call data for review')
 
+      // Save transcript to local history (fire-and-forget)
+      saveCurrentCallToHistory()
+
       // ✅ UPDATE STATE FIRST
       await updateExtensionState({
         isOnCall: false,
@@ -616,6 +700,7 @@ async function processMessage(message: any, sender: any) {
       // Then handle cleanup (but DON'T clear transcriptions/tips - keep for review)
       await handleCallEnd(sender.tab?.id)
       stopKeepAlive()
+      currentCallStartedAt = null
 
       // Notify UI that call ended (but data should remain visible)
       broadcastToUI({
@@ -1091,6 +1176,11 @@ async function connectAIBackend() {
 
     awsWebSocketService.setIntelligenceListener((payload) => {
       console.log('🧠 [Background] Intelligence update received')
+      // Stash latest snapshot so we can attach it to the call history record on hang-up
+      if (payload) {
+        extensionState.latestIntelligence = (payload as any).intelligence ?? null
+        extensionState.latestEntities = (payload as any).entities ?? null
+      }
       broadcastToUI({
         type: 'INTELLIGENCE_UPDATE',
         payload,
@@ -1108,6 +1198,11 @@ async function connectAIBackend() {
 
     // Webhook STATUS_UPDATE listener (call start/end from CallTools resthook)
     awsWebSocketService.setStatusUpdateListener(async (payload) => {
+      // Capture destination for history whenever we see it
+      if (payload.destination) {
+        currentCallDestination = payload.destination
+      }
+
       if (payload.event === 'CALL_STARTED') {
         // Already on a call — enrich with callId if within 15s
         if (extensionState.isOnCall) {
@@ -1172,6 +1267,10 @@ async function connectAIBackend() {
         }
 
         console.log('📞 [Background] Webhook detected CALL_ENDED — ending call')
+
+        // Save transcript to local history (fire-and-forget)
+        saveCurrentCallToHistory()
+
         updateExtensionState({
           isOnCall: false,
           callDetectionSource: null,
@@ -1180,6 +1279,7 @@ async function connectAIBackend() {
 
         handleCallEnd(extensionState.tabId || undefined)
         stopKeepAlive()
+        currentCallStartedAt = null
 
         broadcastToUI({
           type: 'CALL_ENDED_RETAIN_DATA',
@@ -1203,7 +1303,7 @@ async function connectAIBackend() {
       {
         source: 'devassist-call-coach',
         tabId: extensionState.tabId,
-        version: '2.2.7',
+        version: '2.2.8',
       }
     )
 
