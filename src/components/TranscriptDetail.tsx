@@ -1,5 +1,5 @@
 import { ArrowLeft, Phone, Download } from 'lucide-react';
-import type { CallHistoryRecord, HistoryIntelligence, HistoryEntities } from '@/utils/history-store';
+import type { CallHistoryRecord, HistoryIntelligence, HistoryEntities, HistoryTip } from '@/utils/history-store';
 import { downloadCallAsText, downloadCallAsJSON } from '@/utils/history-export';
 
 interface TranscriptDetailProps {
@@ -64,6 +64,7 @@ export function TranscriptDetail({ record, onBack }: TranscriptDetailProps) {
 
       <div className="flex-1 overflow-y-auto">
         <IntelligencePanel intelligence={record.intelligence} entities={record.entities} />
+        <TipsBenchmarkPanel tips={record.tips} />
 
         <div className="px-4 py-4 space-y-3">
           {record.transcript.length === 0 ? (
@@ -184,6 +185,61 @@ function formatWebsiteStatus(status: 'has_website' | 'no_website' | 'unknown' | 
   if (status === 'has_website') return 'Has website';
   if (status === 'no_website') return 'No website';
   return '--';
+}
+
+// ── TEMP: benchmark-only — AI Tips list with per-tip generation latency ──
+// Remove this panel (and the HistoryTip import + tips field) after the perf
+// benchmark data is collected.
+
+function TipsBenchmarkPanel({ tips }: { tips?: HistoryTip[] | null }) {
+  if (!tips || tips.length === 0) return null;
+
+  const withMs = tips.filter(t => typeof t.generationMs === 'number') as Array<HistoryTip & { generationMs: number }>;
+  const avgMs = withMs.length > 0
+    ? Math.round(withMs.reduce((sum, t) => sum + t.generationMs, 0) / withMs.length)
+    : null;
+
+  return (
+    <div className="px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-xs font-semibold uppercase text-amber-700 dark:text-amber-300">
+          AI Tips (benchmark)
+        </div>
+        <div className="text-[11px] text-amber-700 dark:text-amber-300">
+          {tips.length} tip{tips.length === 1 ? '' : 's'}
+          {avgMs !== null && <span> · avg {avgMs}ms</span>}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {tips.map((tip, idx) => (
+          <div
+            key={idx}
+            className="rounded border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 px-3 py-2"
+          >
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-xs font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {tip.heading || 'Tip'}
+                </span>
+                <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                  {tip.stage}
+                </span>
+              </div>
+              <span className="shrink-0 text-[11px] font-mono px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200">
+                {typeof tip.generationMs === 'number' ? `${tip.generationMs}ms` : 'n/a'}
+              </span>
+            </div>
+            {tip.suggestion && (
+              <div className="text-sm text-gray-800 dark:text-gray-200">
+                {tip.suggestion}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // Download helpers now live in @/utils/history-export (reused across views)

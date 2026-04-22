@@ -36,6 +36,17 @@ export interface HistoryEntities {
   websiteStatus?: 'has_website' | 'no_website' | 'unknown';
 }
 
+// TEMP: benchmark-only — per-tip generation latency for perf measurement.
+// Remove after benchmark (along with background capture + TranscriptDetail display).
+export interface HistoryTip {
+  heading: string;
+  stage: string;
+  context?: string;
+  suggestion: string;
+  timestamp: number;
+  generationMs?: number;
+}
+
 export interface CallHistoryRecord {
   conversationId: string;
   agentEmail: string;
@@ -45,6 +56,7 @@ export interface CallHistoryRecord {
   transcript: HistoryTranscriptEntry[];
   intelligence?: HistoryIntelligence | null;
   entities?: HistoryEntities | null;
+  tips?: HistoryTip[] | null;
   savedAt: number;
   schemaVersion: number;
 }
@@ -103,6 +115,7 @@ export async function saveTranscript(params: {
   transcript: HistoryTranscriptEntry[];
   intelligence?: HistoryIntelligence | null;
   entities?: HistoryEntities | null;
+  tips?: HistoryTip[] | null;
 }): Promise<boolean> {
   try {
     if (!params.conversationId) {
@@ -124,6 +137,7 @@ export async function saveTranscript(params: {
       transcript: params.transcript,
       intelligence: params.intelligence ?? null,
       entities: params.entities ?? null,
+      tips: params.tips ?? null,
       savedAt: Date.now(),
       schemaVersion: CURRENT_SCHEMA,
     };
