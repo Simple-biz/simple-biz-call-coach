@@ -25,7 +25,7 @@ console.log('🚀 [Background] Service worker started')
 // Import AWS WebSocket service for real-time coaching
 // Import AI Backend Service (Legacy Socket.io for Elastic Beanstalk fallback)
 import { awsWebSocketService } from '@/services/aws-websocket.service'
-import { saveTranscript, pruneOldTranscripts } from '@/utils/history-store'
+import { saveTranscript, pruneOldTranscripts, type HistoryTip } from '@/utils/history-store'
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -123,6 +123,11 @@ let keepAliveInterval: number | null = null
 let currentCallStartedAt: number | null = null;
 let currentCallDestination: string | null = null;
 
+// TEMP: benchmark-only — capture per-tip generation latency (first chunk → final tip)
+// Revert with the HistoryTip type + TranscriptDetail display after perf test is done.
+let pendingTipStartedAt: number | null = null;
+let currentCallTips: HistoryTip[] = [];
+
 async function saveCurrentCallToHistory(): Promise<void> {
   try {
     const transcripts = extensionState.transcriptions || [];
@@ -158,6 +163,7 @@ async function saveCurrentCallToHistory(): Promise<void> {
       transcript: finalEntries,
       intelligence: extensionState.latestIntelligence ?? null,
       entities: extensionState.latestEntities ?? null,
+      tips: currentCallTips.length > 0 ? currentCallTips : null,
     });
   } catch (err) {
     console.warn('[History] saveCurrentCallToHistory failed:', err);
@@ -300,6 +306,9 @@ chrome.runtime.onConnect.addListener(port => {
         currentCallDestination = message.destination || null
         extensionState.latestIntelligence = null
         extensionState.latestEntities = null
+        // TEMP benchmark: reset per-call tip accumulator
+        currentCallTips = []
+        pendingTipStartedAt = null
         if (currentCallDestination) {
           console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
         }
@@ -615,6 +624,9 @@ async function processMessage(message: any, sender: any) {
       currentCallDestination = message.destination || null
       extensionState.latestIntelligence = null
       extensionState.latestEntities = null
+      // TEMP benchmark: reset per-call tip accumulator
+      currentCallTips = []
+      pendingTipStartedAt = null
       if (currentCallDestination) {
         console.log(`📱 [Background] Destination captured from CALL_STARTED: ${currentCallDestination}`)
       }
@@ -1148,6 +1160,10 @@ async function connectAIBackend() {
 
     // TIP_CHUNK: Forward streaming chunks to UI for progressive rendering
     awsWebSocketService.setTipChunkListener((delta, heading, stage) => {
+      // TEMP benchmark: first chunk of a new tip marks generation-start (client-visible)
+      if (pendingTipStartedAt === null) {
+        pendingTipStartedAt = Date.now();
+      }
       console.log(`🌊 [Background] Tip chunk: "${delta.substring(0, 20)}..."`);
       broadcastToUI({
         type: 'TIP_CHUNK',
@@ -1161,16 +1177,33 @@ async function connectAIBackend() {
         ? tip.options[0].script
         : '';
 
+      // TEMP benchmark: compute generation ms from first chunk → final tip
+      const generationMs = pendingTipStartedAt !== null
+        ? Date.now() - pendingTipStartedAt
+        : undefined;
+      pendingTipStartedAt = null;
+
       const tipPayload = {
         heading: tip.heading,
         stage: tip.stage,
         context: tip.context,
         suggestion: suggestion,
         recommendationId: tip.recommendationId,
-        timestamp: tip.timestamp
+        timestamp: tip.timestamp,
+        generationMs, // TEMP benchmark
       };
 
-      console.log('💡 [Background] AI Tip received — broadcasting final tip');
+      // TEMP benchmark: stash for history
+      currentCallTips.push({
+        heading: tip.heading,
+        stage: tip.stage,
+        context: tip.context,
+        suggestion,
+        timestamp: tip.timestamp || Date.now(),
+        generationMs,
+      });
+
+      console.log(`💡 [Background] AI Tip received — generationMs=${generationMs ?? 'n/a'}`);
       broadcastToUI({ type: 'AI_TIP', payload: tipPayload });
     })
 
@@ -1303,7 +1336,7 @@ async function connectAIBackend() {
       {
         source: 'devassist-call-coach',
         tabId: extensionState.tabId,
-        version: '2.2.9',
+        version: '2.2.10',
       }
     )
 
