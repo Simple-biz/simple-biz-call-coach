@@ -5,7 +5,7 @@ import path from "path";
 const manifest: ManifestV3Export = {
   manifest_version: 3,
   name: "Simple.biz Call Coach",
-  version: "2.2.10",
+  version: "2.2.11",
   description: "Real-time AI-powered call coaching with AWS Lambda backend, conversation intelligence, and Developer Mode for offline testing",
   icons: {
     "16": "icons/icon16.png",
