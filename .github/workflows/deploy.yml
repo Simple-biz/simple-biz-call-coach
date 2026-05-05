@@ -8,6 +8,7 @@ on:
       - '.github/**'
       - '*.md'
       - 'docs/**'
+      - 'doc/**'
 
 jobs:
   build-and-deploy:
