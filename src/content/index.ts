@@ -402,8 +402,9 @@ function handleWebRTCStreamsReady(metadata: any) {
 // ============================================================================
 
 function isCallActive(): boolean {
-  // Collect evidence from all detection methods
-  let domIndicatorsActive = 0;
+  let timerActive = false;
+  let statusActive = false;
+  let hangupActive = false;
 
   // Method 1: Check for timer element
   const timerElement = document.querySelector(
@@ -417,7 +418,7 @@ function isCallActive(): boolean {
       if (seconds % 10 === 0) {
         console.log(`🎤 [Content] Call detected - Timer: ${timerText}`)
       }
-      domIndicatorsActive++;
+      timerActive = true;
     }
   }
 
@@ -426,16 +427,17 @@ function isCallActive(): boolean {
   if (statusDropdown) {
     const text = statusDropdown.textContent?.toLowerCase() || ''
     if (text.includes('on a call')) {
-      domIndicatorsActive++;
+      statusActive = true;
     }
   }
 
-  // Method 3: Check for red hangup button
+  // Method 3: Check for red hangup button (used only as corroborating evidence,
+  // not sufficient alone — button[color="warn"] matches non-call buttons after UI updates)
   const hangupButton = document.querySelector(
     'button[color="warn"], [class*="hangup"], [class*="end-call"]'
   )
   if (hangupButton && (hangupButton as HTMLElement).offsetParent !== null) {
-    domIndicatorsActive++;
+    hangupActive = true;
   }
 
   // Method 4: Check for active WebRTC audio streams
@@ -446,13 +448,12 @@ function isCallActive(): boolean {
     if (getStreams) {
       const streams = getStreams()
       if (streams) {
-        // Check if remote (caller) or local (agent) streams have active audio tracks
         const hasActiveRemote = streams.remote?.getAudioTracks().some((t: MediaStreamTrack) => t.readyState === 'live')
         const hasActiveLocal = streams.local?.getAudioTracks().some((t: MediaStreamTrack) => t.readyState === 'live')
         hasWebRTCStreams = hasActiveRemote || hasActiveLocal;
 
         if (hasWebRTCStreams && Math.random() < 0.1) {
-          console.log(`🎤 [Content] WebRTC streams: remote=${hasActiveRemote}, local=${hasActiveLocal}, DOM indicators=${domIndicatorsActive}`)
+          console.log(`🎤 [Content] WebRTC streams: remote=${hasActiveRemote}, local=${hasActiveLocal}, timer=${timerActive}, status=${statusActive}, hangup=${hangupActive}`)
         }
       }
     }
@@ -460,19 +461,24 @@ function isCallActive(): boolean {
     // Silently fail - WebRTC check is supplementary
   }
 
-  // SMART DETECTION LOGIC:
-  // - If ANY DOM indicator shows call active → call is DEFINITELY active
-  // - If NO DOM indicators but WebRTC streams exist → call ENDED (stale streams not cleaned up by CallTools)
-  // - This prevents getting stuck when CallTools doesn't properly clean up WebRTC
+  // DETECTION LOGIC:
+  // - Timer (Method 1) alone is sufficient: requires specific Angular class + HH:MM:SS format
+  // - Status text (Method 2) alone is sufficient: "on a call" is specific text
+  // - Hangup button (Method 3) alone is NOT sufficient: button[color="warn"] matches
+  //   non-call buttons in CallTools UI updates. Only counts when paired with Method 1 or 2.
+  // - Stale WebRTC streams (no DOM indicators) = call ended, streams not yet cleaned up
 
-  if (domIndicatorsActive > 0) {
-    // Trust DOM indicators - call is definitely active
+  const strongIndicator = timerActive || statusActive;
+  const callConfirmed = strongIndicator || (hangupActive && strongIndicator);
+
+  if (callConfirmed) {
     return true;
   }
 
-  if (hasWebRTCStreams && domIndicatorsActive === 0) {
-    // WebRTC streams exist but NO DOM indicators = stale streams, call ended
-    console.log('⚠️ [Content] WebRTC streams exist but no DOM indicators - call ended, streams not cleaned up');
+  if (hasWebRTCStreams && !callConfirmed) {
+    if (!timerActive && !statusActive && !hangupActive) {
+      console.log('⚠️ [Content] WebRTC streams exist but no DOM indicators - call ended, streams not cleaned up');
+    }
     return false;
   }
 
@@ -679,23 +685,6 @@ console.log('✅ [Content] Call detection initialized')
 console.log(
   `⏱️ [Content] Debounce: ${CONFIRMATION_THRESHOLD} for active, ${INACTIVE_THRESHOLD} for inactive`
 )
-
-// Initial check after page load
-setTimeout(() => {
-  const initialState = isCallActive()
-  console.log(
-    `🧪 [Content] Initial test: ${initialState ? 'CALL ACTIVE' : 'NO CALL'}`
-  )
-  if (initialState) {
-    lastCallState = true
-    lastConfirmedCallState = true
-    console.log('📞 [Content] Call already active - notifying background')
-    sendToBackground({
-      type: 'CALL_STARTED',
-      timestamp: Date.now(),
-    })
-  }
-}, 1000)
 
 // ============================================================================
 // MESSAGE HANDLER (for runtime.sendMessage responses)
