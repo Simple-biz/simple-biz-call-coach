@@ -23,12 +23,15 @@ class DeepgramAudioProcessor extends AudioWorkletProcessor {
     this.frameCount = 0;
     this.audioChunksSent = 0;
 
-    // Get native sample rate from options
-    this.nativeSampleRate = options.processorOptions?.sampleRate || 48000;
+    // Use the AudioContext's ACTUAL sample rate (global in AudioWorkletGlobalScope),
+    // not a value passed in options. The bridge never passes sampleRate, so the old
+    // code silently fell back to 48000 — wrong on Realtek devices that default to 44100,
+    // producing audio Deepgram cannot recognize.
+    this.nativeSampleRate = sampleRate;
     this.source = options.processorOptions?.source || 'unknown'; // 'agent' or 'caller'
-    this.downsampleRatio = Math.round(this.nativeSampleRate / this.targetSampleRate);
+    this.downsampleRatio = this.nativeSampleRate / this.targetSampleRate; // fractional, e.g. 44100/16000 = 2.75625
 
-    console.log(`[AudioWorklet] Initialized for ${this.source}: ${this.nativeSampleRate}Hz → ${this.targetSampleRate}Hz`);
+    console.log(`[AudioWorklet] Initialized for ${this.source}: ${this.nativeSampleRate}Hz → ${this.targetSampleRate}Hz (ratio=${this.downsampleRatio.toFixed(4)})`);
 
     // Handle messages from main thread
     this.port.onmessage = (event) => {
@@ -73,12 +76,18 @@ class DeepgramAudioProcessor extends AudioWorkletProcessor {
       return true;
     }
 
-    // Downsample to 16kHz (Mono)
+    // Downsample to 16kHz with linear interpolation so fractional ratios
+    // (e.g. 44100→16000 = 2.75625) produce correctly-timed samples instead
+    // of running 8.8% fast and being unintelligible to Deepgram.
     const downsampledLength = Math.floor(channelData.length / this.downsampleRatio);
     const downsampled = new Float32Array(downsampledLength);
 
     for (let i = 0; i < downsampledLength; i++) {
-        downsampled[i] = channelData[i * this.downsampleRatio];
+        const srcIndex = i * this.downsampleRatio;
+        const srcLower = Math.floor(srcIndex);
+        const srcUpper = Math.min(srcLower + 1, channelData.length - 1);
+        const frac = srcIndex - srcLower;
+        downsampled[i] = channelData[srcLower] * (1 - frac) + channelData[srcUpper] * frac;
     }
 
     // Convert Float32 to PCM 16-bit

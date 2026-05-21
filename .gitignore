@@ -37,6 +37,13 @@ npm-debug.log*
 # Manual test scripts with credentials
 tests/manual/reload-test-contact.cjs
 
+# Local-only request drafts
+doc/requests/2026-05-12-intro-usage-request.md
+
+# Local build/source archives (never commit)
+*.rar
+*.zip
+
 # Claude Code / god-mode (local only, never commit)
 .claude/
 .bmad/
