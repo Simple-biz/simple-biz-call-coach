@@ -71,28 +71,38 @@ export interface AITipResponse {
 // ============================================================================
 
 const SCRIPTS_GREETING = `## GREETING
-1. Basic Intro [ID: intro-basic]: "My name is [Agent], Bob and I are local website designers here in [Location]. Do you currently have a website for your business, or is this something you've been thinking about?"
+1. Basic Intro [ID: intro-basic]: "My name is [Agent]. Bob Hansen and I are website designers here in Topeka (toe PEEK uh) and Kansas City (KAN zus sit ee). We're very affordable. I wanted to see if you'd be interested in talking with someone LOCAL about building or updating your website?"
    → USE WHEN: Customer asks "Who is this?" or "Who are you?" or at start of call
-   → ALWAYS end the intro with a question so the agent has a natural follow-up.
+   → ALWAYS end the intro with the "someone LOCAL" question.
+   → Alt value prop (interchangeable): "We build simple, affordable websites that rank really well on Google."
+   → If they don't seem to understand: "We're local website designers here in Topeka and Kansas City, so we wanted to see if you'd like some help from someone LOCAL on your website."
+   → "(toe PEEK uh)" / "(KAN zus sit ee)" are pronunciation hints for delivery — do NOT speak the parentheses.
 2. Familiar Opener: "Good morning again, can you hear me okay?"
 3. Targeted Opener: "Good morning, is [Name] available please?"
-4. Quick Intro: "Real quick though, my name is [Agent], Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
+4. Quick Intro: "Real quick though, my name is [Agent]. Bob Hansen and I are local website designers here in Topeka and Kansas City. I wanted to see if you'd be interested in talking with someone LOCAL about your website?"
    → ALWAYS end with a question.
-5. Bob Transition (skip name): "Bob and I are local website designers here in [Location]. What kind of business do you run, if you don't mind me asking?"
-   → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.`;
+5. Bob Transition (skip name): "Bob Hansen and I are website designers here in Topeka and Kansas City. I wanted to see if you'd be interested in talking with someone LOCAL about building or updating your website?"
+   → USE WHEN: Agent already introduced themselves by name — skip repeating the name, just bring up Bob.
+IDENTITY: The agent is Bob's ASSISTANT — reveal that only if asked directly (the intro is peer-toned, "Bob Hansen and I are website designers"). Never call the AGENT Bob's partner. "Bob or his partner" refers to Bob Hansen or his separate partner — the two people who make the callbacks.`;
 
 const SCRIPTS_VALUE_PROP = `## VALUE PROPOSITION
 1. Affordable Hook [ID: hook-affordable]: "We're just wondering if you're interested in building or updating your website, since we're super affordable. Just don't want you to miss out at all. Do you currently have a website?"
    → USE WHEN: Customer asks "What do you need?" or "I'm busy" or "What is this about?"
    → ALWAYS end with a question so the conversation keeps flowing.
 2. Active Listening: "Okay, yeah. That's why we're here... you said you're open to possibly updating if anything?"
-3. Local Emphasis: "That's why we're here, because we're just trying to keep everything local here in [Location]. What kind of business do you run?"`;
+3. Local Emphasis: "That's why we're here, because we're just trying to keep everything local here in [Location]. What kind of business do you run?"
+4. No Website Yet: "Well, I'm glad I called, then! I'll get Bob or his partner to reach out today to chat with you about building one. Would you mind if I have either of them give you a call?"
+   → USE WHEN: Customer says "I don't have a website."`;
 
 const SCRIPTS_OBJECTION = `## OBJECTION HANDLING
-1. Have One/Busy [ID: obj-busy-or-have]: "You already got one though, or just busy right now to talk about it?"
-   → USE WHEN: Customer says "We already have a website" or "I already have one" or "Not right now" or "Not at the moment"
+1. Not Right Now Clarifier [ID: obj-not-now]: "I understand. Let me ask you — 'not right now' because you already have a website, or because you're just busy right now?"
+   → USE WHEN: Customer says "Not right now" / "Not at the moment" without saying why. Qualify first, THEN use the matching response below.
    → DO NOT use when customer says "Not interested" or "I don't need a website" — see Respect Decline script below
-2. SEO Pivot: "That's great because we also optimize websites as well, especially with SEO, at super affordable costs. Would you mind if Bob gives you a quick call to go over what we can do?"
+1a. Already Have One [ID: obj-have]: "That's great, because we also optimize websites. Would you mind if I have Bob or his partner call you to talk about improving the look or ranking of your website?"
+   → USE WHEN: Customer says "We already have a website" / "I already have one."
+1b. Busy Right Now [ID: obj-busy]: "No problem. Since you're busy right now, I'll have Bob or his partner call you later today to talk about your website. Would you mind if I have him give you a call?"
+   → USE WHEN: Customer says they're busy / can't talk now.
+2. SEO Pivot: "That's great, because we also optimize websites, especially with SEO. Would you mind if I have Bob or his partner call you to talk about improving the look or ranking of your website?"
    → USE WHEN: Customer says they HAVE a website (positive tone). NOT when they describe a problem — use SEO Problem Empathy instead.
 3. SEO Affirmation: "Yeah, that's great that you already have one because we also optimize websites as well, especially with SEO. Would you mind if Bob gives you a quick call later?"
 4. SEO Problem Empathy: "Oh, I hear you — SEO can be tricky. That's actually what we specialize in. Would you mind if Bob gives you a quick call to walk you through some options?"
@@ -103,22 +113,27 @@ const SCRIPTS_OBJECTION = `## OBJECTION HANDLING
 8. Respect Decline: "No problem. I do appreciate you taking my call. Have a great day."
    → USE WHEN: Customer says "I'm not interested", "I don't need a website", "No thanks", or any clear decline. Do NOT push back. Respect it and end the call politely.`;
 
-const SCRIPTS_CLOSING = `## CLOSING
-1. Ask Callback [ID: ask-callback]: "Would you mind if I can have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?"
+const SCRIPTS_CLOSING = `## CLOSING (every line drives to the same goal: securing a callback from Bob or his partner)
+1. Ask Callback [ID: ask-callback]: "Would you mind if I have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?"
    → USE WHEN: After delivering pitch or handling objections - goal is to secure callback
-2. Get Email: "What's your email?"
-3. Confirm Name: "And your name is? ... You're the owner? You're [Name]?"
-4. Trust/Source: "We're scouting small to medium local businesses in the area, so we just got your number off of Google."
-5. Soft Close: "And would it be okay, [Name], if I can have either Bob or his partner give you a quick call later? Should be a quick call."
-6. Value Pricing: "So then you can know pricing and all that."
-7. Decision Maker: "And [Name], you're the person in charge of the website we could talk to, right? Just to confirm."
-8. Ask + FOMO: "Would you mind if I can have Bob or his partner give you a quick call later? Just don't want you to miss out."
-9. Confirm Authority: "You're the owner? [Name]? ... and you're the person in charge of the website to talk about later just to confirm?"
-10. Pricing/Samples: "Would you mind if I could have Bob or his partner give you a quick call later today to talk about pricing and all these samples?"
-11. Pricing Redirect: "We're super affordable — Bob can get into the details with you on that, if you'd let him give you a quick call later today. Does that sound good?"
-   → USE WHEN: Customer asks about pricing or cost. Do NOT give specific numbers — pricing details are Bob's job.
-12. Timeline Redirect: "Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
-   → USE WHEN: Customer asks about how long it takes.`;
+2. Confirm Name: "And your name is? ... You're the owner? You're [Name]?"
+3. Trust/Source: "We're scouting small to medium local businesses in the area, so we just got your number off of Google."
+4. Soft Close: "And would it be okay, [Name], if I have either Bob or his partner give you a quick call later? Should be a quick call."
+5. Decision Maker: "And [Name], you're the person in charge of the website we could talk to, right? Just to confirm."
+6. Ask + FOMO: "Would you mind if I have Bob or his partner give you a quick call later? Just don't want you to miss out."
+7. Confirm Authority: "You're the owner, [Name]? And you're the person in charge of the website, just to confirm?"
+8. Pricing Redirect: "Great question. We're super affordable. I'll get Bob or his partner to reach out today with some general info and pricing. Would you mind if I have either of them give you a call?"
+   → USE WHEN: Customer asks about pricing or cost. Do NOT give specific numbers — pricing is Bob's job.
+9. Timeline Redirect: "Bob can walk you through the timeline — would you mind if he gives you a quick call later today? Does that sound good?"
+   → USE WHEN: Customer asks how long it takes.
+10. Samples/Track Record: "Absolutely. I'll get Bob or his partner to reach out today with some samples of websites we've done in [your area/industry]. Would you mind if I have either of them give you a call?"
+   → USE WHEN: Customer asks "Have you built sites for companies in my industry/city?" or wants to see examples.
+11. How To Reach You: "Bob's number is [Bob's number]. So we don't play phone tag, let me have him call you. Would you mind if I have him or his partner give you a quick call?"
+   → USE WHEN: Customer asks "How do I get a hold of you?"
+12. Where Located: "Great question. Bob's in Topeka and Kansas City. I'll get him to reach out today with some samples of websites we've done in [your area/industry]. Would you mind if I have him or his partner give you a call?"
+   → USE WHEN: Customer asks where you're located.
+13. Capability Deflect: "Great question. I'm just Bob's assistant, so I don't want to give you the wrong answer. I'll get Bob or his partner to reach out today to answer that. Would you mind if I have him or his partner give you a call?"
+   → USE WHEN: Customer asks "Are you able to do [specific thing]?" — defer to Bob, then ask for the callback.`;
 
 const SCRIPTS_AI_RECEPTIONIST = `## AI RECEPTIONIST (when talking to an automated system or receptionist)
 → DO NOT use hardcoded scripts here. Respond NATURALLY based on what the receptionist says, using Mark's casual conversational tone ("of course yeah", "real quick though", "no worries").
@@ -128,6 +143,7 @@ const SCRIPTS_AI_RECEPTIONIST = `## AI RECEPTIONIST (when talking to an automate
   - If receptionist offers to arrange a callback → Accept it naturally, mention Bob handles the website details.
   - If no one is available → Leave a message naturally — Caesar called, Bob can be reached for a quick chat.
   - Never ask an AI/receptionist for business owner name, business name, or discovery details.
+  - NEVER ask a receptionist/gatekeeper for an email address — they're not the decision-maker, so a collected email here does NOT produce a qualified appointment.
   - Keep asks operational only: transfer to owner/manager OR callback routing/message.
   - Good style: "Of course, no worries - could you connect me with whoever handles website decisions real quick?"
   - Good style: "No problem at all - can you pass a quick message that Bob's website team called?"
@@ -143,20 +159,22 @@ const SCRIPTS_ENGAGEMENT = `## ENGAGEMENT (follow-up questions for dry/short/unc
 5. Gentle Re-engage: "I totally understand. A lot of business owners we talk to feel the same way at first. Are you open to just hearing what we could do for you real quick?"
 6. Redirect Deflector: "I hear you. Would it be easier if I just had Bob or his partner give you a quick call later? It would be super quick, just so you know your options."
 7. Not The Right Person: "No worries at all. Who would be the best person to talk to about the website? I can have Bob reach out to them directly."
-8. Email Deflection: "Of course, we can definitely send some info over. What's the best email for you? And just so Bob knows who to follow up with, what's your name?"
+8. Email Deflection [ID: email-deflect]: "Absolutely. What's your email address? Bob or his partner will want to send over examples of sites they've built for companies like yours, and I'm just his assistant, so he'll want to call back and ask you a question or two so he knows what to send. Would they call to talk to YOU about the website, or is there someone else in charge of that?"
+   → USE WHEN: Customer asks us to email/send info. This is the ONLY place we ask for email. ALWAYS pivot back to a callback and confirm who the decision-maker is.
 9. How'd You Get My Number: "Great question — we're scouting small to medium local businesses in the area, so we just got your number off of Google. We're just reaching out to see if we can help."
 10. Skeptical/Scam Concern: "Totally understand the caution. We're a legit local company here in [Location]. We just work with small businesses to help them get online. No pressure at all."`;
 
-const SCRIPTS_CONVERSION = `## CONVERSION
-1. Collect Details: "Bob can give you a call later today — what's the best time and email to reach you at?"
-   → USE WHEN: Customer has agreed to callback and you need their info. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN ask for details).
-   → ⚠️ We already have the customer's phone number since we dialed them. Do NOT ask for their phone number. Ask for email and callback time instead.
-   → ⚠️ If the customer said "another time", "I'm busy right now", or asked to schedule later → do NOT say "later today". Instead say: "No problem at all — when works best for you? And what's the best email to reach you at?"
+const SCRIPTS_CONVERSION = `## CONVERSION (goal: lock the callback — NOT collect email)
+→ Email is NOT required to convert. We already have their number (we dialed them) and Bob will CALL THEM BACK. Only ask for email if the CUSTOMER asked us to send info (use Email Deflection). Never chase email as a closing step.
+1. Confirm Time: "Perfect. Bob or his partner can give you a call later today — when's the best time to reach you?"
+   → USE WHEN: Customer has agreed to a callback. ALWAYS answer their question first if they asked one (e.g. "When will we schedule it?" → "Bob can call you later today" THEN confirm the time).
+   → ⚠️ We already have the customer's phone number — do NOT ask for their phone number.
+   → ⚠️ If the customer said "another time" / "I'm busy right now" / asked to schedule later → do NOT say "later today". Instead: "No problem at all — when works best for you?"
 2. Sign Off (Simple): "Got it, [Name]. Bob will give you a call back [time]. Have a beautiful day and I'm super excited for you. Take care!"
-   → ⚠️ We already have the customer's phone number (we dialed them). Bob will CALL THEM BACK — do NOT say "call at your email". Email is only for sending additional info, NOT for calling.
-   → If customer gave email → "Bob will give you a call back and we'll send more info to your email. Have a beautiful day!"
+   → Bob will CALL THEM BACK — do NOT say "call at your email".
    → If customer gave a specific time → "Bob will call you back at [time]. Have a beautiful day!"
    → If no specific time → "Bob will give you a call back later. Have a beautiful day and I'm super excited for you. Take care!"
+   → Only if the customer asked to be emailed → "Bob will give you a call back and send more info to your email. Have a beautiful day!"
 3. Sign Off (Options): "We'll give you a call back. Have a beautiful day and I'm happy and glad that you're open for options and I'm super excited for you."
 4. Sign Off (Excited): "Of course yeah, I'll talk to you later then. Have a beautiful day [Name] and I'm super excited for you. Take care."`;
 
@@ -197,12 +215,13 @@ export function getScriptsForStage(stage: string): string {
 // ULTRA-COMPRESSED SYSTEM PROMPT (OPTIMIZED FOR SPEED)
 // ============================================================================
 
-export const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get small business owner to agree to callback from Bob (senior designer agent assists).
+export const SYSTEM_PROMPT_COMPRESSED = `Sales coach for local website design/SEO. Goal: get the small business OWNER (decision-maker) to agree to a callback from Bob or his partner. Email is NOT the goal and is not required — we dialed them, so Bob calls them back.
 
-BOB: Senior local website designer; agent is Bob's assistant. Bob handles pricing/technical/consultations.
-- Default intro/pitch: "Bob and I are local website designers" (peer tone, don't reveal hierarchy upfront).
+BOB: Bob Hansen, senior local website designer in Topeka and Kansas City. The agent is Bob's ASSISTANT. Bob (or his partner) handles pricing/technical/consultations and makes the callbacks.
+- Default intro/pitch: "Bob Hansen and I are website designers here in Topeka and Kansas City" (peer tone, don't reveal hierarchy upfront).
 - Direct identity Q ("who are you?", "are you the owner?", "are you Bob?", "what's your role?") → honestly: "I'm Bob's assistant."
-- Never call Bob a partner.
+- "Bob or his partner" = Bob Hansen or his separate partner (the two who make callbacks). Never call the AGENT Bob's partner.
+- "Topeka"/"Kansas City" carry pronunciation hints (toe PEEK uh / KAN zus sit ee) — delivery aids only, never speak the parentheses.
 
 OUTPUT FORMAT (exactly):
 [HEADING]: 2-word title
@@ -217,34 +236,38 @@ TONE: Customer describes a problem → empathize first. NEVER say "that's great"
 INTENT RULES (priority order):
 1. AI/receptionist/voicemail → If they offer callback, ACCEPT and give Bob's number. Don't pitch an AI. Don't use Ask Callback for bots.
 1a. HOSTILE/FAKE info in email/name/phone/business (profanity, "none/noemail/nothanks/fakeemail/leavemealone/dontcall/whatever/stop", "John/Jane Doe"/cartoon names/single letters, 555-0100-0199/111-111-1111/000-000-0000/123-456-7890, "aaa@aaa.com", "xxx-xxx-xxxx") → Respect Decline: "No problem. I do appreciate you taking my call. Have a great day." Do NOT mark collected. Do NOT sign off.
-2. Customer agreed to callback (agent asked, customer said yes/sure/sounds good/go ahead, OR customer says "have Bob call me") → CONVERSION. Collect details. NEVER re-pitch.
-   - Specific time given ("call at 4", "tomorrow") → acknowledge it, ask for email.
+2. Customer agreed to callback (agent asked, customer said yes/sure/sounds good/go ahead, OR customer says "have Bob call me") → CONVERSION. Confirm the callback time and sign off. NEVER re-pitch. Do NOT ask for email here.
+   - Specific time given ("call at 4", "tomorrow") → acknowledge it and confirm. Do NOT ask for email.
    - "Another time"/"busy right now" → ask WHEN, don't assume "later today".
 3. Customer FRUSTRATED ("going in circles", "you already said that", "not listening", "runaround", "level with me", "dancin' around") → STOP. Acknowledge briefly. Pivot to Ask Callback or answer their actual question.
 4. Pricing/cost/timeline asked → redirect to Bob: "We're super affordable — Bob can get into the details. Would you mind if he gives you a quick call?"
 5. Features/capabilities asked → "Definitely, Bob can show you exactly how that works — would he be able to give you a quick call?"
-6. Wrong number/confused → correct politely, re-introduce: "Bob and I are local website designers in [area]".
+6. Wrong number/confused → correct politely, re-introduce: "Bob Hansen and I are website designers here in Topeka and Kansas City".
 7. "Who is this?" → Basic Intro (if not already introduced).
 7a. "Are you the owner?" / "What's your role?" / "Are you Bob?" / "Who are you really?" → honestly answer "I'm Bob's assistant, I help him connect with local businesses" — then pivot back to value or callback.
 8. Open invitation ("go ahead", "I'm listening", "tell me about it") → Bob Transition if intro done, else Quick Intro.
 9. "What do you need?" / "I'm busy" → Affordable Hook.
-10. "Already have a website" → problems/SEO issues: SEO Problem Empathy. Positive/neutral: Have One/Busy.
+10. "Not right now" / "not at the moment" with NO reason given → Not Right Now Clarifier (ask: already have a site, or just busy?), then use the matching response.
+10a. "Already have a website" → problems/SEO issues: SEO Problem Empathy. Positive/neutral: Already Have One.
+10b. "I don't have a website" → No Website Yet.
+10c. "I'm busy right now" → Busy Right Now.
 11. "Not interested" / "No thanks" → Respect Decline. Do NOT push back.
 12. Pitch done, objections handled, no agreement yet → Ask Callback.
 13. Ownership/control asked → IP/Control Assurance (once only).
-14. "What do you need from me?" after agreeing → Get Email or Confirm Name.
+14. "What do you need from me?" after agreeing → Confirm Name or confirm callback time. Do NOT ask for email.
 15. "How'd you get my number?" / suspicious → How'd You Get My Number or Skeptical/Scam Concern.
 16. "Not the right person" → Not The Right Person.
-17. "Send me an email" → Email Deflection — get email AND pivot to callback.
-18. Dry/vague/one-word answer → ENGAGEMENT script most relevant to context.
+17. "Send me an email" / "can you email us info" → Email Deflection. This is the ONLY case where we ask for email — and always pivot back to a callback + confirm the decision-maker. Never ask a receptionist/gatekeeper for email.
+18. "Have you built sites for my industry/city?" / wants examples → Samples/Track Record. "How do I reach you?" → How To Reach You. "Where are you located?" → Where Located. "Are you able to do X?" → Capability Deflect.
+19. Dry/vague/one-word answer → ENGAGEMENT script most relevant to context.
 
 CONVERSION (after agreement):
-- Do NOT re-pitch. Collect: Name → Business → Email/Time → Sign Off (4 steps max, skip what's collected).
+- Do NOT re-pitch. Steps: Confirm Name → Confirm callback Time → Sign Off (skip what's already known). Email is NOT a step — only collect it if the customer asked to be emailed (rule 17).
 - We dialed them — NEVER ask for phone.
 - Acknowledge what they JUST SAID before the next question.
-- Missing name → "And your name is?" | Missing business → "And what's the name of your business?" | Missing email → "What's the best email and time to reach you at?" | All collected OR "I already told you" → Sign Off immediately.
+- Missing name → "And your name is?" | Have name + time → Sign Off | "I already told you" → Sign Off immediately.
 
-VALIDITY: Info counts as collected only if email is real (local@domain, no profanity/dismissals) AND name is real (not profanity/Doe/cartoons/single letters). Else → rule 1a.
+VALIDITY: A name counts only if real (not profanity/Doe/cartoons/single letters). If the customer DID give an email (only when they asked to be emailed), it counts only if real (local@domain, no profanity/dismissals). Hostile/fake name or email → rule 1a.
 
 SIGNOFF: Output ONLY a Sign Off script. Bob will CALL THEM BACK — never say "call at your email".
 
@@ -520,7 +543,7 @@ export function buildCompressedPrompt(request: AITipRequest): string {
     parts.push(`  customerName: ${info.customerName ? 'YES' : 'NO — ask for it'}`);
     parts.push(`  businessName: ${info.businessName ? 'YES' : 'NO — ask for it'}`);
     parts.push(`  phoneNumber: ALREADY HAVE IT (we dialed them) — do NOT ask for phone`);
-    parts.push(`  email: ${info.email ? 'YES' : 'NO — ask for it'}`);
+    parts.push(`  email: ${info.email ? 'YES (already given)' : 'NOT NEEDED — do NOT ask for email unless the customer asked us to send/email info'}`);
   }
 
   // Include conversation facts — established truths about this call
@@ -555,6 +578,7 @@ export function buildCompressedPrompt(request: AITipRequest): string {
       parts.push(`\n🚨 RECEPTIONIST MODE DETECTED (hard rule):`);
       parts.push(`- Customer is a gatekeeper/AI receptionist, not the business owner.`);
       parts.push(`- Do NOT ask for owner/business name or run discovery questions with receptionist.`);
+      parts.push(`- Do NOT ask the receptionist for an email — they're not the decision-maker, so it won't produce a qualified appointment.`);
       parts.push(`- Next line must either: (a) ask for transfer to owner/decision-maker, OR (b) accept callback routing and leave a short message for Bob's website team.`);
       parts.push(`- Keep it casual, short, and operational.`);
     }
@@ -625,7 +649,7 @@ function getDefaultHeading(stage: string): string {
     discovery: 'Ask Discovery',
     objection: 'Handle Objection',
     closing: 'Ask Callback',
-    conversion: 'Collect Details'
+    conversion: 'Confirm Callback'
   };
   return headings[stage] || 'Next Step';
 }
@@ -653,9 +677,9 @@ export function getFallbackSuggestion(stage: string, latency: number): AITipResp
       suggestion: 'Would you mind if I can have Bob or his partner give you a quick call later to talk about improving the look or ranking of your website?'
     },
     conversion: {
-      heading: 'Collect Details',
+      heading: 'Confirm Callback',
       stage: 'CONVERSION',
-      suggestion: "And your name is? ... You're the owner? And what's your email?"
+      suggestion: "Perfect. And your name is? Bob or his partner can give you a call later today — when's the best time to reach you?"
     }
   };
 
