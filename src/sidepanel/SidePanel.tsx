@@ -6,6 +6,8 @@ import {
   Wifi,
   WifiOff,
   Send,
+  Sun,
+  Moon,
 } from "lucide-react";
 import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption } from "@/types";
 import { ChatThread } from "@/components/ChatThread";
@@ -14,6 +16,7 @@ import { SessionStats } from "@/components/SessionStats";
 import { HistoryTab } from "@/components/HistoryTab";
 import { pttDeepgramService, type PTTStatus } from "@/services/ptt-deepgram.service";
 import { useSettingsStore } from "@/stores/settings-store";
+import { useTheme } from "@/hooks/useTheme";
 
 export default function SidePanel() {
   const {
@@ -47,6 +50,9 @@ export default function SidePanel() {
 
   // Get Deepgram API key from settings
   const { deepgramApiKey } = useSettingsStore();
+
+  // Dark mode — applies the `dark` class to <html> and persists the choice
+  const { isDark, toggle: toggleTheme } = useTheme();
 
   useEffect(() => {
     console.log(`📊 [SidePanel] Transcriptions array updated: ${transcriptions.length} items`, transcriptions);
@@ -763,7 +769,7 @@ export default function SidePanel() {
       <div className="px-4 py-3 border-b border-[#E0E4E8] bg-white">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-11" />
+            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-11 dark:brightness-0 dark:invert" />
             <span className="text-sm font-semibold text-[#1B1F6B]">Call Coach</span>
             {/* Environment Badge */}
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
@@ -773,8 +779,24 @@ export default function SidePanel() {
             }`}>
               {environment === 'production' ? 'PROD' : 'DEV'}
             </span>
+            {/* Dark-mode indicator — visible only while dark mode is on */}
+            {isDark && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold border bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30 flex items-center gap-1">
+                <Moon size={9} /> Dark
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Dark-mode toggle */}
+            <button
+              onClick={toggleTheme}
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label="Toggle dark mode"
+              aria-pressed={isDark}
+              className="flex items-center justify-center w-7 h-7 rounded-full border border-[#dddddd] text-[#1B1F6B] hover:bg-[#1B1F6B]/10 transition-colors"
+            >
+              {isDark ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
             {getDeepgramStatusIcon()}
             {getDeepgramStatusText()}
           </div>

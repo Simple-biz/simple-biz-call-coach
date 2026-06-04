@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode: `dark:` utilities + `.dark` ancestor toggle.
+   We drive it from <html class="dark"> (see useTheme), not prefers-color-scheme. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* CallTools-aligned color scheme */
 @theme {
   --color-background: #ffffff;
@@ -52,3 +56,62 @@ body {
   color: var(--color-foreground);
   font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
+
+/* ===========================================================================
+   DARK MODE
+   Activated by adding the `dark` class to <html> (driven by the theme setting
+   via src/hooks/useTheme.ts). Two layers of overrides:
+     1. Semantic CSS variables — flips everything using bg-card/text-foreground/
+        border-border/bg-secondary/text-muted-foreground/etc.
+     2. Literal utility overrides — the UI mixes brand hex literals with tokens;
+        these remap the specific literals that must invert for dark. Written
+        unlayered so they win over Tailwind's utilities layer without !important.
+   Light mode is the default and is left completely untouched.
+   =========================================================================== */
+.dark {
+  --color-background: #13151d;
+  --color-foreground: #e6e8f0;
+  --color-primary: #1B1F6B;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #262b3d;
+  --color-secondary-foreground: #e6e8f0;
+  --color-muted: #262b3d;
+  --color-muted-foreground: #9aa0b5;
+  --color-accent: #2a2f7a;
+  --color-accent-foreground: #ffffff;
+  --color-destructive: #D0021B;
+  --color-destructive-foreground: #ffffff;
+  --color-border: #343a4f;
+  --color-input: #343a4f;
+  --color-ring: #8b93ff;
+  --color-card: #1c1f2b;
+  --color-card-foreground: #e6e8f0;
+  --color-warning: #FFAF00;
+}
+
+/* Surfaces (light → dark) */
+.dark .bg-white { background-color: #1c1f2b; }
+.dark .bg-\[\#F5F7FA\] { background-color: #262b3d; }
+.dark .bg-gray-50 { background-color: #1c1f2b; }
+.dark .bg-gray-200 { background-color: #343a4f; }
+
+/* Brand-tint surfaces — navy at low opacity is invisible on a dark bg, so
+   remap to a faint light-periwinkle tint that reads as "highlighted". */
+.dark .bg-\[\#1B1F6B\]\/10 { background-color: rgba(139, 147, 255, 0.10); }
+.dark .bg-\[\#1B1F6B\]\/20 { background-color: rgba(139, 147, 255, 0.16); }
+
+/* Text (dark → light) */
+.dark .text-\[\#333333\] { color: #e6e8f0; }
+.dark .text-\[\#757575\] { color: #9aa0b5; }
+.dark .text-gray-500 { color: #9aa0b5; }
+.dark .text-gray-600 { color: #a6abc0; }
+.dark .text-gray-700 { color: #c2c6d8; }
+/* Brand navy headings → light periwinkle so they stay readable on dark */
+.dark .text-\[\#1B1F6B\] { color: #9aa1ff; }
+.dark .text-\[\#1B1F6B\]\/70 { color: rgba(154, 161, 255, 0.7); }
+
+/* Borders (light → dark) */
+.dark .border-\[\#dddddd\] { border-color: #343a4f; }
+.dark .border-\[\#E0E4E8\] { border-color: #343a4f; }
+.dark .border-gray-100 { border-color: #343a4f; }
+.dark .border-gray-200 { border-color: #343a4f; }
