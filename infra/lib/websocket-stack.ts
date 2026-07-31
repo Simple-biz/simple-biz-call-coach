@@ -358,6 +358,7 @@ export class WebSocketStack extends cdk.Stack {
         allowedOrigins: [
           'https://calltools.io',
           'https://west-3.calltools.io',
+          'https://west-4.calltools.io',
           'https://app.calltools.io',
         ],
         allowedMethods: [lambda.HttpMethod.POST],
