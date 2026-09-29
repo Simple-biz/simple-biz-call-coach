@@ -17,14 +17,17 @@
  *
  * Flags: --live (stream each line as it happens; runs calls one after another)
  *        --random [N] (N generated personas, default 1)  --seed S (repeat a random run)
+ *        --judge (a second model grades each call against the official script)
  *        --verbose (keep the Lambda code's own console logging)
  *
  * Needs the `simple-biz` AWS profile: the Anthropic key is read from Secrets
  * Manager `call-coach/api-keys`, exactly as the Lambdas do.
  */
 import './sim-env';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
-import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
+import { generateAITipStreaming, getFallbackSuggestion } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
 
@@ -46,6 +49,8 @@ const opt = (name: string) => {
 };
 const LIVE = flag('live');
 const VERBOSE = flag('verbose');
+const JUDGE = flag('judge');
+const JUDGE_MODEL = process.env.JUDGE_MODEL || 'claude-sonnet-5-5';
 const RANDOM = flag('random') ? Number(opt('random') ?? 1) : 0;
 const SEED = Number(opt('seed') ?? Math.floor(Math.random() * 1e9));
 const optValues = new Set([opt('random'), opt('seed')].filter(Boolean));
@@ -163,6 +168,22 @@ function randomPersona(r: () => number, n: number): [string, string] {
 // Simulation
 // ---------------------------------------------------------------------------
 type Turn = { speaker: 'agent' | 'caller'; text: string };
+type Verdict = { outcome: string; violations: string[]; notes: string[] };
+
+// Second opinion: a separate model grades the finished call against the official script.
+const SCRIPT_DOC = readFileSync(join(__dirname, '../../doc/reference/official-call-script.md'), 'utf8');
+async function judge(client: Anthropic, persona: string, transcripts: Turn[]): Promise<Verdict> {
+  const call = transcripts.map(t => `${t.speaker === 'agent' ? 'AGENT' : 'LEAD'}: ${t.text}`).join('\n');
+  const r = await client.messages.create({
+    model: JUDGE_MODEL,
+    max_tokens: 1500,
+    system: `You audit cold calls. The AGENT reads lines suggested by an AI coach; judge the AGENT against this official script and its guidelines:\n\n${SCRIPT_DOC}\n\nThe agent's location (a city name) is the agent's own choice — not a violation. ${BOB_NUMBER} is Bob's real number, filled in by the agent for the script's "Bob's number is ____" — not invented. Unfilled placeholders like [Name] ARE a violation. Be strict but fair: only flag clear breaks of the script's rules, wrong facts, or lines that clearly hurt the call. Reply with ONLY JSON: {"outcome": "callback booked" | "declined" | "email only" | "no decision", "violations": ["turn N: ..."], "notes": ["minor observations"]}`,
+    messages: [{ role: 'user', content: `Lead persona (hidden from the agent): ${persona}\n\nCall:\n${call}` }],
+  });
+  const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('');
+  try { return JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)); }
+  catch { return { outcome: 'judge error', violations: [], notes: [text.slice(0, 200)] }; }
+}
 
 function leadSystem(persona: string) {
   return `You are role-playing a person answering a cold call on the phone. ${persona}
@@ -218,6 +239,8 @@ function check(raw: string, transcripts: Turn[]): string[] {
   const leadSaidEmail = transcripts.some(t => t.speaker === 'caller' && /e-?mail|send (me|us)/i.test(t.text));
   if (/\$\s*\d|\d+\s*(dollars|bucks|hundred|thousand|k\b)|(few|couple|several) (hundred|thousand)/i.test(raw)) f.push('PRICE: quoted a number');
   if (/best time|what time|what day|when works|when would be|when's good|when is good/i.test(raw)) f.push('TIME: asked for a specific time/day');
+  if (/(today|later),? or (would )?(tomorrow|another day)|in the next (hour|few hours|\d+ minutes)/i.test(raw)) f.push('TIME: offered a choice of days / a time window');
+  if (/(does that work|would that work|sound fair|sound good|sounds good)\??\s*"?\s*$/i.test(raw.trim()) && !transcripts.some(t => t.speaker === 'caller' && /\b(yes|sure|okay|ok|go ahead|sounds good|that's fine|fine)\b/i.test(t.text))) f.push('ENDING: weak close instead of the callback question');
   if (/interested\?\s*"?\s*$/i.test(raw.trim())) f.push('INTERESTED: ended with an "interested?" question');
   if (/(what's|what is|confirm|is this|can i get|could i get|give me)[^.?!]*(phone number|your number|best number|direct line)|best way to reach|reach (him|her|them) directly/i.test(raw.replace(/\[Bob'?s[^\]]*\]/gi, ''))) f.push('PHONE: asked/confirmed their number');
   if (/email/i.test(l) && !leadSaidEmail) f.push('EMAIL: suggested email unprompted');
@@ -277,6 +300,8 @@ async function runPersona(key: string, persona: string, lead: Anthropic) {
     }, async () => {});
     const raw = tip.suggestion.trim().replace(/^"|"$/g, '');
     prevSuggestions.push(raw);
+    const FALLBACKS = ['greeting', 'discovery', 'objection', 'closing', 'conversion'].map(st => getFallbackSuggestion(st, 0).suggestion);
+    if (FALLBACKS.includes(raw)) { flags.push(`turn ${i + 1}: FALLBACK: tip timed out or failed, canned line shown (${Date.now() - t0}ms)`); emit(red('   ⚠ FALLBACK: canned line (timeout/failure)')); }
     for (const f of check(raw, transcripts)) { flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
     const spoken = raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
     transcripts.push({ speaker: 'agent', text: spoken });
@@ -288,8 +313,15 @@ async function runPersona(key: string, persona: string, lead: Anthropic) {
   }
   emit(flags.length ? red(`FLAGS (${flags.length}):\n  ${flags.join('\n  ')}`) : green('FLAGS: none'));
   emit(dim(`ended: ${outcome}, ${transcripts.length} lines`));
+  let verdict: Verdict | undefined;
+  if (JUDGE) {
+    verdict = await judge(lead, persona, transcripts);
+    emit((verdict.violations.length ? red : green)(`JUDGE: ${verdict.outcome} · ${verdict.violations.length} violation(s)`));
+    for (const x of verdict.violations) emit(red(`  ✗ ${x}`));
+    for (const x of verdict.notes) emit(yellow(`  · ${x}`));
+  }
   if (!LIVE) say(buf.join('\n'));
-  return { key, flags };
+  return { key, flags, verdict };
 }
 
 (async () => {
@@ -323,5 +355,8 @@ async function runPersona(key: string, persona: string, lead: Anthropic) {
   else results.push(...(await Promise.all(runs.map(([k, p]) => runPersona(k, p, lead)))));
 
   say(bold('\n━━━━━━━━━━ SUMMARY ━━━━━━━━━━'));
-  for (const r of results) say(`${r.flags.length ? red('FLAGGED') : green('clean  ')}  ${r.key}  (${r.flags.length})`);
+  for (const r of results) {
+    const j = r.verdict ? `  judge: ${r.verdict.outcome}, ${r.verdict.violations.length} violation(s)` : '';
+    say(`${r.flags.length || r.verdict?.violations.length ? red('FLAGGED') : green('clean  ')}  ${r.key}  (${r.flags.length})${j}`);
+  }
 })().catch(e => { console.error(e); process.exit(1); });
