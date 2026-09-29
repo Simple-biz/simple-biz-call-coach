@@ -10,6 +10,7 @@ import {
   ANTHROPIC_TIMEOUT_MS,
 } from './fallback-utils';
 import { generateAITipStreamingOpenAI } from './openai-client';
+import { mentionsPrice, PRICING_REDIRECT } from './price-guard';
 
 // Lazy-initialized Anthropic client (async due to Secrets Manager fetch)
 let anthropicClient: Anthropic | null = null;
@@ -267,7 +268,7 @@ INTENT RULES (priority order):
 0. SEVERAL QUESTIONS in one message (e.g. price + location + "how do I reach you?") → answer EVERY one, in order, one short sentence each using its scripted answer below, then end with ONE callback question. Never skip a question. Any part the script doesn't answer (number source, company name, terms...) gets "I'm just Bob's assistant, so I don't want to give you the wrong answer on that" — never an invented answer.
 1. AI bot/voicemail → If they offer callback, ACCEPT and give Bob's number. Don't pitch an AI. Don't use Ask Callback for bots.
 1b. HUMAN receptionist/front desk (decision maker not available) → Do NOT hand out Bob's number unless they ask for it (if they DO ask, give it straight away — rule 18) — Bob or his partner reaches out, not the other way round. Never ask for the decision maker's direct line or cell, and never confirm the number we dialed — we just call it back. Never ask the receptionist for a time or day either ("after 4 or 5?") — Bob or his partner reaches out later today. If they ask for Bob's number, write it as [Bob's number]. Once they agree to a callback: "Excellent. Bob or his partner will reach out. Would they talk to YOU about the website, or is there someone else in charge of that?"
-1a. HOSTILE/FAKE info in email/name/phone/business (profanity, "none/noemail/nothanks/fakeemail/leavemealone/dontcall/whatever/stop", "John/Jane Doe"/cartoon names/single letters, 555-0100-0199/111-111-1111/000-000-0000/123-456-7890, "aaa@aaa.com", "xxx-xxx-xxxx") → Respect Decline: "No problem. I do appreciate you taking my call. Have a great day." Do NOT mark collected. Do NOT sign off.
+1a. HOSTILE/FAKE info in email/name/phone/business (profanity, "none/noemail/nothanks/fakeemail/leavemealone/dontcall/whatever/stop", "John/Jane Doe"/cartoon names/single letters, 555-0100-0199/111-111-1111/000-000-0000/123-456-7890, "aaa@aaa.com", "xxx-xxx-xxxx") → Respect Decline: "No problem. I appreciate you taking my call." Do NOT mark collected. Do NOT sign off.
 2. Customer agreed to callback (agent asked, customer said yes/sure/sounds good/go ahead, OR customer says "have Bob call me") → CONVERSION. Confirm Callback (later today) and sign off. NEVER re-pitch. Do NOT ask for email here.
    - NEVER ask for a specific time or day, never offer a choice ("today, or would tomorrow work better?"), never promise a window ("in the next hour"). Specific time volunteered ("call at 4") → just acknowledge it.
    - Customer asks for later / "another time" / "busy right now" → offer next business day: "No problem — I'll have Bob or his partner reach out to you tomorrow." Never say "another time"/"sometime". Don't ask "when works best?".
@@ -640,14 +641,6 @@ export function buildCompressedPrompt(request: AITipRequest): string {
   return parts.join('\n');
 }
 
-export const PRICING_REDIRECT = "I honestly don't want to give you the wrong number — it really depends on what you need. Would you mind if I have Bob or his partner give you a call to go over options and pricing?";
-
-// Any spoken price figure: "$500", "500 dollars", "a few hundred", "couple thousand", "per month".
-// "48,000 Page-1 rankings" is the script's own stat and must not trip it.
-export function mentionsPrice(script: string): boolean {
-  return /\$\s?\d|\b\d[\d,.]*\s*(dollars|bucks|k\b)|\b(hundreds?|thousands?)\b(?!\s*percent)|\bper month\b|\ba month\b/i.test(script);
-}
-
 export function parseAITipResponse(text: string, callStage: string): Omit<AITipResponse, 'model' | 'latency' | 'cacheHitRate' | 'tokenMetrics'> {
   const extract = (pattern: RegExp) => {
     const match = text.match(pattern);
@@ -689,7 +682,7 @@ export function parseAITipResponse(text: string, callStage: string): Omit<AITipR
   // ballpark, so enforce it here rather than trusting the prompt alone.
   if (mentionsPrice(script)) {
     console.warn(`[Parse] Price figure in suggestion, replacing with Pricing Redirect: "${script}"`);
-    script = PRICING_REDIRECT;
+    return { suggestion: PRICING_REDIRECT, heading: 'Pricing Redirect', stage: 'OBJECTION_HANDLING', context };
   }
 
   return {

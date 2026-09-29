@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mentionsPrice, parseAITipResponse, PRICING_REDIRECT } from '@infra/lib/lambda/shared/claude-client-optimized';
-
-const tip = (script: string) => `[HEADING]: Pricing\n[STAGE]: CLOSING\n[SCRIPT]: "${script}"`;
+// price-guard has no dependencies, so this runs in CI without the infra packages installed.
+// parseAITipResponse applies it to every suggestion before it reaches the agent.
+import { mentionsPrice, PRICING_REDIRECT } from '@infra/lib/lambda/shared/price-guard';
 
 describe('price guard', () => {
   it.each([
@@ -13,15 +13,19 @@ describe('price guard', () => {
     'It is roughly 2k to start.',
   ])('flags a price figure: %s', (s) => {
     expect(mentionsPrice(s)).toBe(true);
-    expect(parseAITipResponse(tip(s), 'closing').suggestion).toBe(PRICING_REDIRECT);
   });
 
   it.each([
     'As a Google-certified partner, we back our work with over 48,000 Page-1 rankings and guarantee Page-1 results on Google and ChatGPT in 90 days or you don\'t pay a dime.',
     "Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing. Would you mind if I have them give you a call?",
     'We are a hundred percent local.',
+    "Excellent. I know you won't be ready to do anything for a month, but would it be okay if Bob or his partner reach out to you LATER TODAY to discuss some ideas with you?",
+    'Thousands of local businesses show up on Page 1.',
   ])('leaves script lines alone: %s', (s) => {
     expect(mentionsPrice(s)).toBe(false);
-    expect(parseAITipResponse(tip(s), 'closing').suggestion).toBe(s);
+  });
+
+  it('the redirect itself passes the guard', () => {
+    expect(mentionsPrice(PRICING_REDIRECT)).toBe(false);
   });
 });

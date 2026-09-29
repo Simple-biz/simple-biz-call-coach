@@ -27,7 +27,7 @@ import './sim-env';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
-import { generateAITipStreaming, getFallbackSuggestion } from '../lib/lambda/shared/claude-client-optimized';
+import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
 
@@ -51,9 +51,12 @@ const LIVE = flag('live');
 const VERBOSE = flag('verbose');
 const JUDGE = flag('judge');
 const JUDGE_MODEL = process.env.JUDGE_MODEL || 'claude-sonnet-5-5';
-const RANDOM = flag('random') ? Number(opt('random') ?? 1) : 0;
+// `--random` takes an optional count; a following word that isn't a number is a persona name, not the count.
+const randomArg = opt('random');
+const randomCount = randomArg !== undefined && /^\d+$/.test(randomArg) ? randomArg : undefined;
+const RANDOM = flag('random') ? Number(randomCount ?? 1) : 0;
 const SEED = Number(opt('seed') ?? Math.floor(Math.random() * 1e9));
-const optValues = new Set([opt('random'), opt('seed')].filter(Boolean));
+const optValues = new Set([randomCount, opt('seed')].filter(Boolean));
 const named = argv.filter(a => !a.startsWith('--') && !optValues.has(a));
 
 // Our own output goes straight to stdout; console.log is silenced for the Lambda code's noise.
@@ -301,8 +304,9 @@ async function runPersona(key: string, persona: string, lead: Anthropic) {
     }, async () => {});
     const raw = tip.suggestion.trim().replace(/^"|"$/g, '');
     prevSuggestions.push(raw);
-    const FALLBACKS = ['greeting', 'discovery', 'objection', 'closing', 'conversion'].map(st => getFallbackSuggestion(st, 0).suggestion);
-    if (FALLBACKS.includes(raw)) { flags.push(`turn ${i + 1}: FALLBACK: tip timed out or failed, canned line shown (${Date.now() - t0}ms)`); emit(red('   ⚠ FALLBACK: canned line (timeout/failure)')); }
+    // Canned fallbacks (getFallbackSuggestion) and the OpenAI fallback report no output tokens;
+    // a real Claude answer always does. Matching on text would misfire: a canned line is also a valid Ask Callback.
+    if (tip.tokenMetrics.output === 0) { flags.push(`turn ${i + 1}: FALLBACK: tip timed out or failed, canned line shown (${Date.now() - t0}ms)`); emit(red('   ⚠ FALLBACK: canned line (timeout/failure)')); }
     for (const f of check(raw, transcripts)) { flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
     const spoken = raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
     transcripts.push({ speaker: 'agent', text: spoken });

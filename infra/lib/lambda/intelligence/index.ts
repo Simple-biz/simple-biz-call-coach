@@ -9,6 +9,7 @@ import {
   ClientIntelligenceSnapshot
 } from '../shared/intelligence-client';
 import { generateAITip, generateAITipStreaming } from '../shared/claude-client-optimized';
+import { mentionsPrice } from '../shared/price-guard';
 import { sendToConnection } from '../shared/apigw-client';
 import { getCachedIntelligence, setCachedIntelligence } from './cache';
 
@@ -241,6 +242,10 @@ export const handler = async (
 
       const aiTipStartTime = Date.now();
       let isFirstChunk = true;
+      // The agent reads tips as they stream. If the text starts quoting a price, stop
+      // streaming before that chunk goes out; the final AI_TIP carries the pricing redirect.
+      let streamedSoFar = '';
+      let priceWithheld = false;
       const aiTip = await generateAITipStreaming({
         conversationId,
         callStage,
@@ -256,6 +261,11 @@ export const handler = async (
           email: hasEntityEmail,
         },
       }, async (delta: string) => {
+        streamedSoFar += delta;
+        if (priceWithheld || mentionsPrice(streamedSoFar)) {
+          priceWithheld = true;
+          return;
+        }
         await sendToConnection(connectionId, {
           type: 'TIP_CHUNK',
           payload: { delta, ...(isFirstChunk ? { heading: 'Generating...', stage: callStage } : {}) }
