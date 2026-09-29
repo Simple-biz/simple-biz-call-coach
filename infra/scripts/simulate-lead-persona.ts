@@ -246,6 +246,7 @@ function check(raw: string, transcripts: Turn[]): string[] {
   if (/email/i.test(l) && !leadSaidEmail) f.push('EMAIL: suggested email unprompted');
   if (/\[Name\]/.test(raw)) f.push('NAME: left a raw [Name] placeholder');
   if (/48,?000\s+(businesses|clients|customers|websites|companies)/i.test(raw)) f.push('STAT: 48,000 is Page-1 rankings, not businesses/clients');
+  if (/(got|found|pulled|grabbed) (your|the) (number|info)|business (listings|directory|research)|off (of )?google|company name|formal company/i.test(raw)) f.push('INVENTED: number source / company claim not in the script');
   if (/caesar/i.test(raw)) f.push('AGENT-NAME: used a hardcoded agent name');
   if (/(yes,? )?we (absolutely |definitely )?(can|do) (set up|build|do|handle|offer)|we absolutely can/i.test(raw)) f.push('CAPABILITY: promised a capability instead of deferring to Bob');
   const agentNamedCity = transcripts.some(t => t.speaker === 'agent' && /topeka|kansas city/i.test(t.text));
