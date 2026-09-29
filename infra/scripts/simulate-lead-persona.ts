@@ -5,12 +5,24 @@
  * Uses the real production code paths — generateConversationIntelligence and
  * generateAITipStreaming — and mirrors the stage / conversion / signoff logic in
  * lambda/intelligence/index.ts. Intelligence lags one turn, as it does in prod
- * (background cache refresh).
+ * (background cache refresh). Every coach line is checked against the script
+ * guidelines (doc/reference/official-call-script.md).
  *
  * Usage (from infra/):
- *   AWS_PROFILE=simple-biz AWS_REGION=us-east-1 API_KEYS_SECRET_ARN=call-coach/api-keys \
- *   CLAUDE_HAIKU_MODEL=claude-haiku-4-5-20251001 npx tsx scripts/simulate-lead-persona.ts [persona-key ...]
+ *   npm run sim -- --live --random            one random lead, streamed line by line
+ *   npm run sim -- --live receptionist        one named persona, streamed
+ *   npm run sim -- --random 10 --seed 42      10 random leads in parallel (replayable)
+ *   npm run sim                               all 8 fixed personas in parallel
+ *   npm run sim -- --list                     list fixed personas
+ *
+ * Flags: --live (stream each line as it happens; runs calls one after another)
+ *        --random [N] (N generated personas, default 1)  --seed S (repeat a random run)
+ *        --verbose (keep the Lambda code's own console logging)
+ *
+ * Needs the `simple-biz` AWS profile: the Anthropic key is read from Secrets
+ * Manager `call-coach/api-keys`, exactly as the Lambdas do.
  */
+import './sim-env';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
@@ -22,6 +34,32 @@ const AGENT_PLACE = 'Topeka'; // agent's discretion — the coach must leave [Pl
 const BOB_NUMBER = '785-555-0142';
 const MAX_LEAD_TURNS = 12;
 
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+const argv = process.argv.slice(2);
+const flag = (name: string) => argv.includes(`--${name}`);
+const opt = (name: string) => {
+  const i = argv.indexOf(`--${name}`);
+  const v = i >= 0 ? argv[i + 1] : undefined;
+  return v && !v.startsWith('--') ? v : undefined;
+};
+const LIVE = flag('live');
+const VERBOSE = flag('verbose');
+const RANDOM = flag('random') ? Number(opt('random') ?? 1) : 0;
+const SEED = Number(opt('seed') ?? Math.floor(Math.random() * 1e9));
+const optValues = new Set([opt('random'), opt('seed')].filter(Boolean));
+const named = argv.filter(a => !a.startsWith('--') && !optValues.has(a));
+
+// Our own output goes straight to stdout; console.log is silenced for the Lambda code's noise.
+const say = (s: string) => process.stdout.write(s + '\n');
+const tty = process.stdout.isTTY;
+const c = (code: number) => (s: string) => (tty ? `\x1b[${code}m${s}\x1b[0m` : s);
+const dim = c(2), bold = c(1), red = c(31), green = c(32), yellow = c(33), cyan = c(36), magenta = c(35);
+
+// ---------------------------------------------------------------------------
+// Personas
+// ---------------------------------------------------------------------------
 const PERSONAS: Record<string, string> = {
   'busy-owner-has-site':
     "You are Mike, owner of Mike's Roofing. You have an old Wix site that gets no calls. You're on a job site and busy. You start short, but if they mention getting you found on Google you warm up and will accept a callback. You are the decision maker.",
@@ -41,6 +79,89 @@ const PERSONAS: Record<string, string> = {
     "You are Ruth, 68, owner of a small antique shop. You don't understand what they're calling about at first and say so. Once it's explained simply you're mildly interested and accept a callback. You are the decision maker.",
 };
 
+// Seeded RNG (mulberry32) so `--seed` replays the same leads.
+function rng(seed: number) {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const POOL = {
+  first: ['Mike', 'Dana', 'Carla', 'Tom', 'Priya', 'Gary', 'Luis', 'Ruth', 'Keisha', 'Brandon', 'Linda', 'Jorge', 'Amy', 'Hank', 'Tasha', 'Dev', 'Marisol', 'Earl', 'Kim', 'Wade'],
+  last: ['Miller', 'Nguyen', 'Garcia', 'Patel', 'Johnson', 'Okafor', 'Schmidt', 'Reyes', 'Walsh', 'Kowalski'],
+  business: [
+    ['roofing company', 'roofing'], ['HVAC company', 'HVAC'], ['dental office', 'dental'], ['bakery', 'bakery'],
+    ['auto repair shop', 'auto'], ['landscaping company', 'landscaping'], ['small law office', 'law'], ['hair salon', 'salon'],
+    ['plumbing company', 'plumbing'], ['food truck', 'food-truck'], ['chiropractic clinic', 'chiro'], ['pet grooming shop', 'grooming'],
+    ['house cleaning service', 'cleaning'], ['tattoo studio', 'tattoo'], ['daycare', 'daycare'], ['electrical contractor', 'electrician'],
+    ['clothing boutique', 'boutique'], ['towing company', 'towing'], ['martial arts gym', 'gym'], ['family restaurant', 'restaurant'],
+  ] as [string, string][],
+  role: [
+    ['the owner', true, 'owner'], ['the owner', true, 'owner'], ['the owner', true, 'owner'],
+    ['the front-desk receptionist (the owner handles the website)', false, 'receptionist'],
+    ['the office manager, who can make website decisions', true, 'manager'],
+    ["the owner's spouse, who answers the business line (the owner decides)", false, 'spouse'],
+  ] as [string, boolean, string][],
+  website: [
+    ["The business doesn't have a website at all.", 'no-site'],
+    ["The owner's nephew built the website years ago; nobody knows if it works.", 'old-site'],
+    ['The owner built a Wix/Squarespace site themselves and it gets almost no traffic.', 'diy-site'],
+    ['The business already pays "a guy" or an agency for the website.', 'has-agency'],
+    ["You think the business's website is fine.", 'site-fine'],
+    ["The business's website has been down for weeks and nobody has dealt with it.", 'site-down'],
+  ] as [string, string][],
+  temperament: [
+    ['friendly and chatty', 'chatty'], ['rushed — you are in the middle of work', 'rushed'], ['skeptical of sales calls', 'skeptic'],
+    ['grumpy and short', 'grumpy'], ['elderly and a bit confused by tech terms', 'confused'], ['suspicious this is a scam', 'suspicious'],
+    ["noncommittal — you give flat answers like 'eh', 'maybe', 'I dunno'", 'flat'], ['curious and asks lots of questions', 'curious'],
+  ] as [string, string][],
+  moves: [
+    'Ask how much a website costs, and push for a ballpark if they dodge.',
+    'Ask where they are located.',
+    'Ask if they have built websites for businesses in your industry.',
+    'Ask if they have built websites in your city.',
+    'Ask whether they can do online booking or online ordering.',
+    'Ask how they got your number.',
+    'Ask them to just email you the information.',
+    'Ask "who is this really?" or "are you a robot?".',
+    "Say you won't be ready to do anything until next year.",
+    'Say "not right now" without giving a reason.',
+    'Say you are busy and ask them to call back later.',
+    'Ask how do you get a hold of them.',
+    'Ask what ChatGPT has to do with your business.',
+  ],
+  leaning: [
+    ['You are open to it and will accept a callback if they are respectful.', 'yes'],
+    ["You are on the fence; you'll only accept a callback if they handle your questions well.", 'fence'],
+    ['You are not interested and will decline, but stay polite.', 'no'],
+  ] as [string, string][],
+};
+
+function randomPersona(r: () => number, n: number): [string, string] {
+  const pick = <T>(a: T[]) => a[Math.floor(r() * a.length)];
+  const name = `${pick(POOL.first)} ${pick(POOL.last)}`;
+  const [biz, bizKey] = pick(POOL.business);
+  const [role, isDm, roleKey] = pick(POOL.role);
+  const [site, siteKey] = pick(POOL.website);
+  const [temp, tempKey] = pick(POOL.temperament);
+  const [lean, leanKey] = pick(POOL.leaning);
+  const moves = [...POOL.moves].sort(() => r() - 0.5).slice(0, Math.floor(r() * 3));
+  const brief = [
+    `You are ${name}, ${role} at a local ${biz}.`,
+    site, `You are ${temp}.`, ...moves, lean,
+    isDm ? 'You are the decision maker for the website.' : 'You are NOT the decision maker for the website.',
+  ].join(' ');
+  return [`rnd${n}-${bizKey}-${roleKey}-${siteKey}-${tempKey}-${leanKey}`, brief];
+}
+
+// ---------------------------------------------------------------------------
+// Simulation
+// ---------------------------------------------------------------------------
 type Turn = { speaker: 'agent' | 'caller'; text: string };
 
 function leadSystem(persona: string) {
@@ -95,48 +216,55 @@ function check(raw: string, transcripts: Turn[]): string[] {
   const f: string[] = [];
   const l = raw.toLowerCase();
   const leadSaidEmail = transcripts.some(t => t.speaker === 'caller' && /e-?mail|send (me|us)/i.test(t.text));
-  if (/\$\s*\d|\d+\s*(dollars|bucks|hundred|thousand|k\b)|a few hundred/i.test(raw)) f.push('PRICE: quoted a number');
+  if (/\$\s*\d|\d+\s*(dollars|bucks|hundred|thousand|k\b)|(few|couple|several) (hundred|thousand)/i.test(raw)) f.push('PRICE: quoted a number');
   if (/best time|what time|what day|when works|when would be|when's good|when is good/i.test(raw)) f.push('TIME: asked for a specific time/day');
   if (/interested\?\s*"?\s*$/i.test(raw.trim())) f.push('INTERESTED: ended with an "interested?" question');
-  if (/phone number|your number|best number|direct line|reach (him|her|them) directly|best way to reach/i.test(raw.replace(/\[Bob'?s[^\]]*\]/gi, ''))) f.push('PHONE: asked/confirmed their number');
+  if (/(what's|what is|confirm|is this|can i get|could i get|give me)[^.?!]*(phone number|your number|best number|direct line)|best way to reach|reach (him|her|them) directly/i.test(raw.replace(/\[Bob'?s[^\]]*\]/gi, ''))) f.push('PHONE: asked/confirmed their number');
   if (/email/i.test(l) && !leadSaidEmail) f.push('EMAIL: suggested email unprompted');
   if (/\[Name\]/.test(raw)) f.push('NAME: left a raw [Name] placeholder');
+  if (/48,?000\s+(businesses|clients|customers|websites|companies)/i.test(raw)) f.push('STAT: 48,000 is Page-1 rankings, not businesses/clients');
   if (/caesar/i.test(raw)) f.push('AGENT-NAME: used a hardcoded agent name');
   if (/(yes,? )?we (absolutely |definitely )?(can|do) (set up|build|do|handle|offer)|we absolutely can/i.test(raw)) f.push('CAPABILITY: promised a capability instead of deferring to Bob');
   const agentNamedCity = transcripts.some(t => t.speaker === 'agent' && /topeka|kansas city/i.test(t.text));
   if (/topeka|kansas city/i.test(raw) && !agentNamedCity) f.push('PLACE: coach filled in a city instead of [Place]');
   if (/another time|sometime/i.test(raw) && /(call|reach out)/i.test(raw)) f.push('WHEN: vague "another time" instead of today/next business day');
-  if (/\.\.\.\s*(got it|perfect|great)/i.test(raw)) f.push('ONE-TURN: line skips ahead past the customer\'s answer');
+  if (/\.\.\.\s*(got it|perfect|great)/i.test(raw)) f.push("ONE-TURN: line skips ahead past the customer's answer");
   if (/(call|reach out)/i.test(l) && /\bbob\b/i.test(l) && !/bob or his partner|bob or her partner|him or his partner|either of them|have them/i.test(l)) f.push('BOB: callback offer without "Bob or his partner"');
   return f;
 }
 
-async function runPersona(key: string, lead: Anthropic) {
-  const persona = PERSONAS[key];
+async function runPersona(key: string, persona: string, lead: Anthropic) {
   const transcripts: Turn[] = [];
   const facts = new Set<string>();
   const prevSuggestions: string[] = [];
   const hw: { v?: string } = {};
   let intel: any = null;
   const flags: string[] = [];
-  const out: string[] = [`\n==================== ${key} ====================`];
+  const buf: string[] = [];
+  // Live: print as it happens. Batch: buffer so parallel calls don't interleave.
+  const emit = (line: string) => (LIVE ? say(line) : buf.push(line));
+
+  emit(bold(`\n━━━━━━━━━━ ${key} ━━━━━━━━━━`));
+  emit(dim(`persona: ${persona}`));
 
   const leadSay = async (attempt = 0): Promise<string> => {
     const msgs = transcripts.map(t => ({ role: t.speaker === 'caller' ? 'assistant' as const : 'user' as const, content: t.text }));
     if (msgs.length === 0 || msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '(phone rings, you pick up)' });
-    const r = await lead.messages.create({ model: LEAD_MODEL, max_tokens: 120, system: leadSystem(persona), messages: msgs });
+    const r = await lead.messages.create({ model: LEAD_MODEL, max_tokens: 400, system: leadSystem(persona), messages: msgs });
     const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('').trim();
     return text || (attempt < 2 ? leadSay(attempt + 1) : '[HANGUP]');
   };
 
+  let outcome = 'max turns';
   for (let i = 0; i < MAX_LEAD_TURNS; i++) {
     const said = await leadSay();
-    if (said.includes('[HANGUP]')) { out.push('LEAD: [hangs up]'); break; }
+    if (said.includes('[HANGUP]')) { emit(cyan('LEAD   ') + dim('[hangs up]')); outcome = 'lead hung up'; break; }
     transcripts.push({ speaker: 'caller', text: said });
-    out.push(`LEAD:  ${said}`);
+    emit(cyan('LEAD   ') + said);
 
     const s = detectStage(transcripts, intel, hw);
     factsFrom(intel, facts);
+    const t0 = Date.now();
     const tip = await generateAITipStreaming({
       conversationId: `sim-${key}`,
       callStage: s.stage as any,
@@ -149,23 +277,51 @@ async function runPersona(key: string, lead: Anthropic) {
     }, async () => {});
     const raw = tip.suggestion.trim().replace(/^"|"$/g, '');
     prevSuggestions.push(raw);
-    for (const f of check(raw, transcripts)) { flags.push(`turn ${i + 1}: ${f}`); out.push(`   ⚠ ${f}`); }
+    for (const f of check(raw, transcripts)) { flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
     const spoken = raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
     transcripts.push({ speaker: 'agent', text: spoken });
-    out.push(`AGENT: ${spoken}   [${s.stage} → ${tip.heading}]`);
+    emit(magenta('AGENT  ') + spoken + dim(`   [${s.stage} → ${tip.heading} · ${Date.now() - t0}ms]`));
 
     // Intelligence refreshes in the background in prod — lands for the NEXT turn.
+    // Pass a copy: the intelligence client reverses the array in place.
     intel = await generateConversationIntelligence({ conversationId: `sim-${key}`, transcripts: transcripts.map(t => ({ ...t })) }).catch(() => intel);
   }
-  out.push(`FLAGS: ${flags.length ? '\n  ' + flags.join('\n  ') : 'none'}`);
-  console.log(out.join('\n'));
+  emit(flags.length ? red(`FLAGS (${flags.length}):\n  ${flags.join('\n  ')}`) : green('FLAGS: none'));
+  emit(dim(`ended: ${outcome}, ${transcripts.length} lines`));
+  if (!LIVE) say(buf.join('\n'));
   return { key, flags };
 }
 
 (async () => {
+  if (flag('list')) {
+    for (const [k, v] of Object.entries(PERSONAS)) say(`${bold(k)}\n  ${dim(v)}`);
+    return;
+  }
+
+  const runs: [string, string][] = [];
+  if (RANDOM) {
+    const r = rng(SEED);
+    for (let n = 1; n <= RANDOM; n++) runs.push(randomPersona(r, n));
+    say(dim(`random personas: ${RANDOM}, seed ${SEED} (repeat with --seed ${SEED})`));
+    if (flag('dry')) {
+      for (const [k, p] of runs) say(`${bold(k)}\n  ${p}`);
+      return;
+    }
+  }
+  for (const k of named) {
+    if (!PERSONAS[k]) { console.error(`Unknown persona "${k}". Try --list.`); process.exit(1); }
+    runs.push([k, PERSONAS[k]]);
+  }
+  if (!runs.length) runs.push(...Object.entries(PERSONAS));
+
+  // The Lambda modules log heavily; keep the transcript readable unless --verbose.
+  if (!VERBOSE) { console.log = () => {}; console.info = () => {}; console.warn = () => {}; }
+
   const lead = new Anthropic({ apiKey: await getSecret('ANTHROPIC_API_KEY') });
-  const keys = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(PERSONAS);
-  const results = await Promise.all(keys.map(k => runPersona(k, lead)));
-  console.log('\n==================== SUMMARY ====================');
-  for (const r of results) console.log(`${r.flags.length ? 'FLAGGED' : 'clean  '}  ${r.key}  (${r.flags.length})`);
+  const results = [];
+  if (LIVE) for (const [k, p] of runs) results.push(await runPersona(k, p, lead));
+  else results.push(...(await Promise.all(runs.map(([k, p]) => runPersona(k, p, lead)))));
+
+  say(bold('\n━━━━━━━━━━ SUMMARY ━━━━━━━━━━'));
+  for (const r of results) say(`${r.flags.length ? red('FLAGGED') : green('clean  ')}  ${r.key}  (${r.flags.length})`);
 })().catch(e => { console.error(e); process.exit(1); });

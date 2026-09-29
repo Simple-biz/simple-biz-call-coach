@@ -8,7 +8,8 @@
     "build": "tsc",
     "watch": "tsc -w",
     "test": "jest",
-    "cdk": "cdk"
+    "cdk": "cdk",
+    "sim": "npx --yes tsx scripts/simulate-lead-persona.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-secrets-manager": "^3.1010.0",
