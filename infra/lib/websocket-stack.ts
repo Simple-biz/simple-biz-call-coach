@@ -112,11 +112,16 @@ export class WebSocketStack extends cdk.Stack {
       entry: 'lib/lambda/disconnect/index.ts',
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
       environment: sharedEnv,
       tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
+      vpc,
+      vpcSubnets: {
+        subnets: privateSubnets
+      },
+      securityGroups: [lambdaSecurityGroup],
       bundling: {
         minify: true,
         sourceMap: true,
