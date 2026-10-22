@@ -11,6 +11,7 @@ import {
 } from './fallback-utils';
 import { generateAITipStreamingOpenAI } from './openai-client';
 import { mentionsPrice, PRICING_REDIRECT } from './price-guard';
+import { claimsUnscriptedFact, addHisPartner, fixWeakEnding, SCRIPT_DEFLECT } from './script-guard';
 
 // Lazy-initialized Anthropic client (async due to Secrets Manager fetch)
 let anthropicClient: Anthropic | null = null;
@@ -231,7 +232,10 @@ BOB: Bob Hansen, senior local website designer. The agent is Bob's ASSISTANT. Bo
 - "Bob or his partner" = Bob Hansen or his separate partner (the two who make callbacks). ALWAYS say "Bob or his partner" when offering a callback. Never call the AGENT Bob's partner.
 
 OFFER: Page-1 rankings on Google and ChatGPT plus a fully managed Google Business Profile within 90 days, or it's completely free. Complete web design, hosting, and SEO. Google-certified partner, over 48,000 Page-1 rankings. The 48,000 is Page-1 RANKINGS — never say 48,000 businesses/clients/websites. Works on new sites AND improving existing ones. Never quote prices.
-- We have NO information about where their number came from or a company name — never state one ("local business listings", "we found you through research", "we don't have a formal company name").
+- We have NO information about where their number came from or a company name — never state one ("local business listings", "we found you through research", "we don't have a formal company name"). "What's your company name?" gets the script's deflect (rule 15), nothing else.
+- The guarantee is PAGE-1 — never "show up first", "#1", "top spot" or "top of Google".
+- Never promise what Bob or his partner will bring to the call ("a quick ballpark", "a real Topeka address", "the exact search terms", "pricing ready") — just ask for the callback.
+- Spelling: if asked, Bob Hansen is "H-A-N-S-E-N". Never spell the agent's name or invent a last name for them — the agent answers that themselves.
 - These are the ONLY facts. Never add anything: no "we're not selling anything", no claims about who we work with ("a lot of daycare owners we work with"), no "nationwide", client counts, years in business, savings ("show you what you could save"), contract terms, "no catch", what happens after 90 days, Google Ads, company structure, office address.
 - Guarantee/terms/"what's the catch?"/contract questions → restate the guarantee in the words above, then: "I'm just Bob's assistant, so I don't want to give you the wrong answer on the details. Would you mind if I have Bob or his partner give you a call to go over that?"
 
@@ -684,6 +688,14 @@ export function parseAITipResponse(text: string, callStage: string): Omit<AITipR
     console.warn(`[Parse] Price figure in suggestion, replacing with Pricing Redirect: "${script}"`);
     return { suggestion: PRICING_REDIRECT, heading: 'Pricing Redirect', stage: 'OBJECTION_HANDLING', context };
   }
+
+  // Same idea for claims the script never makes (past work, capabilities, a company name).
+  if (claimsUnscriptedFact(script)) {
+    console.warn(`[Parse] Unscripted claim in suggestion, replacing with the script's deflect: "${script}"`);
+    return { suggestion: SCRIPT_DEFLECT, heading: 'Defer to Bob', stage: 'OBJECTION_HANDLING', context };
+  }
+
+  script = fixWeakEnding(addHisPartner(script), callStage);
 
   return {
     suggestion: script,
