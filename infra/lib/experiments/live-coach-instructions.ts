@@ -27,7 +27,8 @@ export const PRICE_PUSHED_AGAIN = "I'd love to give you a ballpark, but I'm just
 
 // The questions the month's top bookers turned an answer back to the lead with (2026-10-23): the close's
 // build-or-update and who-decides questions, asked early in their own words.
-export const PURPOSE_PIVOT = 'Is it more updating the one you have, or building a new one?'
+// Worded so it doesn't assume a site: Kayser's third test call had it before the lead said she had one.
+export const PURPOSE_PIVOT = 'Would this be for building a new website, or updating one?'
 export const DECISION_PIVOT = 'Are you the one who handles the website?'
 
 export const CLOSE_NAME = 'Can I have your first name, please?'
@@ -81,6 +82,7 @@ HOW THE BEST AGENTS TALK (the month's 8 top bookers, 13-26% of connected calls b
     "${PURPOSE_PIVOT}" (this is the close's build-or-update question: once asked, skip it in the close)
     "${DECISION_PIVOT}" (this is the close's who-decides question: once asked, skip it in the close)
     or, after you've said what Bob will do, "Would that be okay?"
+  Never "Does that help?" or "Fair enough?": the top bookers never say them.
   Price once both asks are spent: "Great question. It depends on what you're looking for. ${PURPOSE_PIVOT}" (how a top booker turned it).
 - SAY "Bob or his partner" in the callback question and the last line of the close; everywhere else just "Bob" ("I'll have Bob give you a call to go over options and pricing"). They said "Bob or his partner" less than once a call.`
 

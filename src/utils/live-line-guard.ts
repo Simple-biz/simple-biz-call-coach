@@ -93,6 +93,7 @@ export class LiveLineGuard {
   apply(text: string, final: boolean): string | null {
     let line = guardLiveLine(text, final)
     if (line === null || !final) return line
+    this.prevAsked = this.askedLastLine
     if (this.confirmed && line.trim() === DECLINE_LINE) line = SIGNOFF_LINE
     // Kayser's test calls, 2026-10-23: the callback question on 7 lines in 3 minutes, then on 4
     // lines in 2.5 minutes once it could no longer come twice in a row. Of 170 good booked calls in
@@ -126,8 +127,9 @@ export class LiveLineGuard {
     if ((CALLBACK_STATEMENT.test(line) && !/would you mind/i.test(line)) || line.includes(CLOSE_NAME)) this.confirmed = true
     // The month's top 8 bookers said "Bob or his partner" 0.66 times a call (186 bookings,
     // 2026-10-23); the coach said it 5-6 times. Past the second, it's just "Bob".
-    line = line.replace(/\bBob or (?:his|one of his) partners?\b/gi, (m) => (++this.bobOrPartner > MAX_BOB_OR_PARTNER ? 'Bob' : m))
-    return this.endOnAQuestion(line)
+    // After endOnAQuestion, so a callback ask it adds counts too.
+    line = this.endOnAQuestion(line)
+    return line.replace(/\bBob or (?:his|one of his) partners?\b/gi, (m) => (++this.bobOrPartner > MAX_BOB_OR_PARTNER ? 'Bob' : m))
   }
 
   private askedWho = false
@@ -136,22 +138,38 @@ export class LiveLineGuard {
   private timeConfirmed = false
   private doneSaid = false
   private askedName = false
+  private prevAsked = false
 
   /**
    * Kayser, 2026-10-23: "let's not leave the lead without them having to answer, we should not be
    * the conversation ender." The top bookers ended 3 replies in 4 on a question. Until the callback
-   * is agreed, a line that doesn't (often one whose callback ask was just dropped above) gets the
-   * next of their two questions the call hasn't had yet (the close's own versions count), then one
-   * of their short checks, never the same check two lines running.
+   * is agreed, a line that doesn't (often one whose callback ask was just dropped above) gets, in
+   * order: who handles the website, build or update (each once a call; the close's own versions
+   * count), "Would that be okay?" after saying what Bob will do, else the callback ask when the
+   * line before didn't ask. Only questions the top bookers really ask: Kayser's third test call
+   * was full of "Does that help?", which appears in none of their 186 bookings.
    */
   private endOnAQuestion(line: string): string {
-    line = this.skipAskedCloseQuestion(line)
+    line = this.skipAskedCloseQuestion(line).replace(/\s*(?:Does that help|Fair enough)\?\s*$/i, '')
     if (line.includes(DECISION_PIVOT) || /someone else in charge|\bthe owner\b|who should bob/i.test(line)) this.askedWho = true
     if (line.includes(PURPOSE_PIVOT) || line.includes(CLOSE_PURPOSE) || /glad I called/i.test(line)) this.askedPurpose = true
     const t = line.trim()
     const check = this.lastCheck
     this.lastCheck = ''
-    if (this.confirmed || t.endsWith('?') || GOODBYE.test(t) || t.includes(CLOSE_DONE_SHORT)) return line
+    if (t.endsWith('?') || GOODBYE.test(t) || t.includes(CLOSE_DONE_SHORT)) return line
+    if (this.confirmed) {
+      // Kayser's third test call: "Sure, I'll have Bob call you tomorrow morning before ten." ended
+      // flat and the lead had to ask "You said you had one more question?". The close goes on.
+      if (!this.askedWho) {
+        this.askedWho = true
+        return `${t} ${CLOSE_DECISION_MAKER}`
+      }
+      if (!this.askedPurpose) {
+        this.askedPurpose = true
+        return `${t} ${CLOSE_PURPOSE}`
+      }
+      return line
+    }
     if (!this.askedWho) {
       this.askedWho = true
       return `${t} ${DECISION_PIVOT}`
@@ -160,10 +178,18 @@ export class LiveLineGuard {
       this.askedPurpose = true
       return `${t} ${PURPOSE_PIVOT}`
     }
-    const options = /\b(?:Bob (?:can|will)|I'll have Bob)\b/.test(t) ? ['Would that be okay?', 'Fair enough?'] : ['Does that help?', 'Fair enough?']
-    const next = options.find((o) => o !== check)!
-    this.lastCheck = next
-    return `${t} ${next}`
+    if (/\b(?:Bob (?:can|will)|I'll have Bob)\b/.test(t) && check !== OKAY_CHECK) {
+      this.lastCheck = OKAY_CHECK
+      return `${t} ${OKAY_CHECK}`
+    }
+    if (!this.prevAsked || HEDGE_REPLY.test(t)) {
+      this.askedLastLine = true
+      this.asks++
+      // Right after an ask, a busy lead gets the top bookers' softer version instead of the same
+      // question twice ("Is it okay to talk to you later today when you're less busy instead?").
+      return `${t} ${this.prevAsked ? BUSY_ASK : CALLBACK_ASK}`
+    }
+    return line
   }
 
   /** The close asks who decides, then build or update; a question the call already had is skipped. */
@@ -203,6 +229,10 @@ export class LiveLineGuard {
     return withSignoff ? `${CLOSE_DONE_SHORT} ${SIGNOFF_LINE}` : CLOSE_DONE_SHORT
   }
 }
+
+// After a line saying what Bob will do; in 34 of the top bookers' 186 bookings.
+const OKAY_CHECK = 'Would that be okay?'
+const BUSY_ASK = "Is it okay if Bob calls you later today, when you're less busy?"
 
 // The close's last line when the time was already confirmed in an earlier line.
 const CLOSE_DONE_SHORT = "Perfect, I've got everything I need."
