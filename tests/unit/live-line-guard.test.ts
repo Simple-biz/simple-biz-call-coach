@@ -130,7 +130,7 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?", true))
       .toBe("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?");
     expect(g.apply('Great question. Bob is in [Place]. Would you mind if I have Bob or his partner give you a call to talk about your website?', true))
-      .toBe('Great question. Bob is in [Place].');
+      .toBe('Great question. Bob is in [Place]. Are you the one who handles the website?');
     // The line after an answer-only line may ask again.
     expect(g.apply("No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?", true))
       .toBe("No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?");
@@ -143,7 +143,7 @@ describe('LiveLineGuard: callback question pacing', () => {
       .toBe('Would you mind if I have Bob or his partner reach out to you later today?');
   });
   // Kayser's second test call, 2026-10-23: four asks in 2.5 minutes, never two in a row.
-  it('asks at most twice in a call, keeping the answers', async () => {
+  it('asks twice in a call, keeping the answers; later only when the lead is hedging', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
     const g = new LiveLineGuard();
     const lines = [
@@ -155,9 +155,66 @@ describe('LiveLineGuard: callback question pacing', () => {
       "It's only free if we don't get you on Page 1 of Google and ChatGPT within 90 days. Would you mind if I have Bob or his partner give you a call to go over that?",
       "No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?",
     ].map((l) => g.apply(l, true));
-    expect(lines.filter((l) => /would you mind/i.test(l ?? ''))).toHaveLength(2);
-    expect(lines[4]).toBe("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.");
-    expect(lines[5]).toBe("It's only free if we don't get you on Page 1 of Google and ChatGPT within 90 days.");
-    expect(lines[6]).toBe("No problem. I understand you're busy.");
+    expect(lines.filter((l) => /would you mind/i.test(l ?? ''))).toHaveLength(3);
+    // Kayser: "we should not be the conversation ender". The answers that would stop dead get the
+    // top bookers' two questions, once each.
+    expect(lines[1]).toBe("Yes, I'm a real person. I'm Bob's assistant. Are you the one who handles the website?");
+    expect(lines[2]).toBe("It's Simple.biz. Is it more updating the one you have, or building a new one?");
+    // Third "Bob or his partner" of the call, so just "Bob".
+    expect(lines[4]).toBe("Great question. It depends on what you're looking for. I'll have Bob give you a call to go over some options and pricing. Would that be okay?");
+    expect(lines[5]).toBe("It's only free if we don't get you on Page 1 of Google and ChatGPT within 90 days. Does that help?");
+    // The lead is hedging and both questions are used: the ask is the question (the top bookers'
+    // busy replies end on it 88% of the time).
+    expect(lines[6]).toBe("No problem. I understand you're busy. Would you mind if I have Bob give you a call to talk about your website?");
+  });
+  // The month's top bookers said "Bob or his partner" 0.66 times a call; the coach said it 5-6 times.
+  it('says "Bob or his partner" twice a call at most, then "Bob"', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    g.apply("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.", true);
+    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today.", true))
+      .toBe("Perfect, I've got everything I need. Bob will give you a call later today.");
+  });
+  // Sim 2026-10-23: the close asked who decides and build-or-update again after both were answered.
+  it('skips close questions the call already asked', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    expect(g.apply("Yes, I'm a real person. I'm Bob's assistant.", true)).toMatch(/Are you the one who handles the website\?$/);
+    expect(g.apply("It's Simple.biz.", true)).toMatch(/updating the one you have, or building a new one\?$/);
+    g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
+    // Reworded by the model (sim 2026-10-23), still skipped.
+    expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
+      .toBe("Perfect, I've got everything I need.");
+    // The email line's own who-decides question isn't asked again either.
+    const g2 = new LiveLineGuard();
+    g2.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
+    expect(g2.apply("Absolutely. What's the best email address? Since I'm just his assistant, would they be calling to talk to you about the website, or is there someone else in charge of that?", true))
+      .toBe("Absolutely. What's the best email address?");
+    // The time was confirmed above: the last line doesn't restate "later today", and the close's
+    // last line isn't said twice; a goodbye with it is kept.
+    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today. Thanks so much. Have a beautiful day!", true))
+      .toBe('Thanks so much. Have a beautiful day!');
+  });
+  // Sim 2026-10-23, the same run: three guard slips.
+  it('adds no question to a goodbye in other words', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    expect(new LiveLineGuard().apply('Absolutely. No problem. I appreciate your time—thanks again.', true))
+      .toBe('Absolutely. No problem. I appreciate your time—thanks again.');
+  });
+  it('does not cut a line at "Dr."', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    g.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
+    // The whole who-decides sentence goes (not "Would they talk to Dr."), and the next question follows.
+    expect(g.apply('Thanks. Would they talk to Dr. Patel about the website, or is there someone else in charge of that?', true))
+      .toBe('Thanks. Is it more updating the one you have, or building a new one?');
+  });
+  it('asks for their first name once', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    g.apply("Sure, I'll have Bob or his partner call you after three. Can I have your first name, please?", true);
+    expect(g.apply('Can I have your first name, please?', true))
+      .toBe('Would they talk to YOU about the website, or is there someone else in charge of that?');
   });
 });

@@ -279,7 +279,10 @@ function check(raw: string, transcripts: Turn[]): string[] {
   if (/topeka|kansas city/i.test(raw) && !agentNamedCity) f.push('PLACE: coach filled in a city instead of [Place]');
   if (/another time|sometime/i.test(raw) && /(call|reach out)/i.test(raw)) f.push('WHEN: vague "another time" instead of today/next business day');
   if (/\.\.\.\s*(got it|perfect|great)/i.test(raw)) f.push("ONE-TURN: line skips ahead past the customer's answer");
-  if (/(call|reach out)/i.test(l) && /\bbob\b/i.test(l) && !/bob or his partner|bob or her partner|him or his partner|either of them|have them/i.test(l)) f.push('BOB: callback offer without "Bob or his partner"');
+  // Once "Bob or his partner" has been said, plain "Bob" is fine: the month's top bookers said the
+  // full phrase 0.66 times a call (2026-10-23), and the coach caps it at two.
+  const saidBobOrPartner = transcripts.some(t => t.speaker === 'agent' && /bob or his partner/i.test(t.text));
+  if (/(call|reach out)/i.test(l) && /\bbob\b/i.test(l) && !saidBobOrPartner && !/bob or his partner|bob or her partner|him or his partner|either of them|have them/i.test(l)) f.push('BOB: callback offer without "Bob or his partner"');
   return f;
 }
 

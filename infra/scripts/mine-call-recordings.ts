@@ -13,6 +13,8 @@
  * Usage (from infra/):
  *   CALLTOOLS_API_KEY=... DEEPGRAM_API_KEY=... npx --yes tsx scripts/mine-call-recordings.ts \
  *     --run 2026-10-w3 --after 2026-10-16 --before 2026-10-22 [--stage all|select|download|transcribe|review|report]
+ *   Booked calls from chosen agents only (e.g. the month's best bookers), skipping calls another run has:
+ *     ... --run 2026-10-top-agents --agents <id,id,...> --per-agent 30 --exclude-run 2026-10-w3
  * The Anthropic key is read from Secrets Manager `call-coach/api-keys`, as the simulator does.
  */
 import './sim-env';
@@ -33,6 +35,9 @@ const BEFORE = opt('before')!;
 const STAGE = opt('stage', 'all')!;
 const MIN_TALK = Number(opt('min-talk', '60'));
 const MODEL = 'claude-opus-5-5';
+const AGENTS = opt('agents')?.split(',').filter(Boolean);
+const PER_AGENT = Number(opt('per-agent', '30'));
+const EXCLUDE_RUN = opt('exclude-run');
 
 // How many calls of each outcome, by CallTools disposition id.
 const QUOTA: Array<{ id: number; label: string; n: number }> = [
@@ -103,12 +108,17 @@ async function select(): Promise<Call[]> {
   const file = join(DIR, 'manifest.json');
   if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8'));
   const chosen: Call[] = [];
-  for (const q of QUOTA) {
+  const excluded = new Set<number>(
+    EXCLUDE_RUN ? JSON.parse(readFileSync(join(DIR, '..', EXCLUDE_RUN, 'manifest.json'), 'utf8')).map((c: Call) => c.id) : [],
+  );
+  // With --agents: only their booked calls, PER_AGENT each.
+  const quota = AGENTS ? [{ ...QUOTA[0], n: PER_AGENT * AGENTS.length }] : QUOTA;
+  for (const q of quota) {
     const found: Call[] = [];
     for (let page = 1; ; page++) {
       const d = await ct(`/calls/?page=${page}&page_size=1000&start__date__range_after=${AFTER}&start__date__range_before=${BEFORE}&billsec__range_min=${MIN_TALK}&call_disposition_id=${q.id}`);
       for (const c of d.results) {
-        if (c.call_recording_fsfile_id) {
+        if (c.call_recording_fsfile_id && !excluded.has(c.id) && (!AGENTS || AGENTS.includes(c.app_user))) {
           found.push({ id: c.id, fsfile: c.call_recording_fsfile_id, agent: c.app_user, disposition: q.label, billsec: c.billsec, start: c.start, campaign: c.campaign });
         }
       }
@@ -117,6 +127,7 @@ async function select(): Promise<Call[]> {
     // Spread across agents: round-robin over each agent's shuffled calls.
     const byAgent = new Map<string, Call[]>();
     for (const c of shuffle(found, q.id)) byAgent.set(c.agent, [...(byAgent.get(c.agent) ?? []), c]);
+    if (AGENTS) for (const [agent, list] of byAgent) byAgent.set(agent, list.slice(0, PER_AGENT));
     const picked: Call[] = [];
     while (picked.length < q.n && [...byAgent.values()].some((l) => l.length)) {
       for (const list of byAgent.values()) if (list.length && picked.length < q.n) picked.push(list.shift()!);
