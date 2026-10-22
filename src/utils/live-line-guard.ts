@@ -81,12 +81,33 @@ export function oneCallbackStatement(text: string): string {
  */
 export class LiveLineGuard {
   private confirmed = false
+  private askedLastLine = false
 
   apply(text: string, final: boolean): string | null {
     let line = guardLiveLine(text, final)
     if (line === null || !final) return line
     if (this.confirmed && line.trim() === DECLINE_LINE) line = SIGNOFF_LINE
+    // Kayser's test call, 2026-10-23: the callback question on 7 lines in 3 minutes. The top 22
+    // real bookings ask it 0.7 times per call and never more than twice. Never in two lines in a
+    // row: the second answer stands on its own.
+    if (ANY_CALLBACK_ASK.test(line)) {
+      const answerOnly = line.replace(ANY_CALLBACK_ASK_G, '').replace(/\s{2,}/g, ' ').trim()
+      if (this.askedLastLine && answerOnly) {
+        line = answerOnly
+        this.askedLastLine = false
+      } else {
+        this.askedLastLine = true
+      }
+    } else {
+      this.askedLastLine = false
+    }
     if (CALLBACK_STATEMENT.test(line) && !/would you mind/i.test(line)) this.confirmed = true
     return line
   }
 }
+
+// Any form of the callback question: "Would you mind if I have Bob or his partner give you a call
+// ...?", "...reach out to you later today?", "Would it be okay if Bob or his partner...?".
+const ANY_CALLBACK_ASK_SRC = String.raw`\s*(?:Would you mind|Would it be okay|Is it okay|Can I have)[^?]*(?:give (?:you|them|him|her|the owner)[^?]*call|reach out|call you)[^?]*\?`
+const ANY_CALLBACK_ASK = new RegExp(ANY_CALLBACK_ASK_SRC, 'i')
+const ANY_CALLBACK_ASK_G = new RegExp(ANY_CALLBACK_ASK_SRC, 'gi')

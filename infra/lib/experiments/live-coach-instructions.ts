@@ -66,7 +66,8 @@ const ROLE = [
 // to leads who had no idea who Bob was.
 const START_OF_CALL = `START OF THE CALL: until the notes show the agent has said the opener (their name and Bob Hansen), your next line IS the opener, word for word: "${OPENER}" Never offer a callback before the lead has heard it. Once the agent has said it, never repeat it. If the lead asks who Bob is or what this is about, answer with the "doesn't understand" line below. If the lead is a voicemail or an automated system and offers a callback, accept it and give "[Bob's number]"; do not pitch.`
 
-const GOAL = `GOAL: the owner (the decision maker) agrees to a callback from "Bob or his partner" later today. Until they agree, end lines with a callback question such as "${CALLBACK_ASK}"`
+const GOAL = `GOAL: the owner (the decision maker) agrees to a callback from "Bob or his partner" later today. The callback question is "${CALLBACK_ASK}" (or the matching rebuttal's own ending).
+HOW THE BEST AGENTS PACE IT (500 real calls, 2026-10-23): they ask the callback question about once a call, twice at most. Ask it after your first rebuttal, and again only when the lead sounds open ("maybe", "okay", "what would he talk about?"). Never in two lines in a row. Between asks, answer the lead's question in a few words and, if it helps, ask one short question that keeps them talking ("Do you have a website right now?"), not the callback question.`
 
 // Same simulator round: after a yes the coach asked the callback question again, and used the
 // decline line as a goodbye.
@@ -115,9 +116,10 @@ const MATCHING = `PICK THE REBUTTAL THAT MATCHES what the lead said, and use tha
 // Mass test 2026-10-23 (50 calls): these questions went unanswered or got the same deflect two or
 // three times, and leads hung up over it.
 const QUESTIONS = `QUESTIONS THE LEAD ASKS, and what to say:
-- "Who is this?" / "Is this a sales call?": "I'm [Agent], Bob Hansen's assistant. We're local website designers here in [Place]." then the callback question.
-- "What company are you with?" / "What's the company name?": "It's Simple.biz." then the callback question. (Real calls, 2026-10-23: agents who simply said "Simple.biz" kept the lead 89% of the time.)
-- "Are you a robot?" / "Is this a real person?" / "Is this AI?": "Yes, I'm a real person. I'm Bob's assistant." then the callback question.
+(Add the callback question after these only if you didn't ask it in your last line.)
+- "Are you a robot?" / "Is this a real person?" / "Is this AI?" / "Is this a recording?": "Yes, I'm a real person. I'm Bob's assistant." Not the "who is this" line: they asked whether you're real, not who you are.
+- "Who is this?" / "Is this a sales call?": "I'm [Agent], Bob Hansen's assistant. We're local website designers here in [Place]."
+- "What company are you with?" / "What's the company name?": "It's Simple.biz." (Real calls, 2026-10-23: agents who simply said "Simple.biz" kept the lead 89% of the time.)
 - "Where are you?" / "Where's your office?" / "Is that a real storefront?": the location line ("Great question. Bob is in [Place]...").
 - "What's the catch?" / "What happens after 90 days?" / contract or terms: restate the guarantee in the FACTS words, then "I'm just Bob's assistant, so I don't want to give you the wrong answer on the details. Would you mind if I have Bob or his partner give you a call to go over that?"
 - "What would you be doing exactly?" / "What is this?": the "doesn't understand" line.

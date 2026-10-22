@@ -121,3 +121,25 @@ describe('phone numbers the coach writes', () => {
     expect(withoutForbiddenAsks(s)).toBe(s);
   });
 });
+
+// Kayser's test call, 2026-10-23: the callback question on 7 lines in 3 minutes.
+describe('LiveLineGuard: callback question pacing', () => {
+  it('never asks the callback question in two lines in a row', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    expect(g.apply("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?", true))
+      .toBe("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?");
+    expect(g.apply('Great question. Bob is in [Place]. Would you mind if I have Bob or his partner give you a call to talk about your website?', true))
+      .toBe('Great question. Bob is in [Place].');
+    // The line after an answer-only line may ask again.
+    expect(g.apply("No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?", true))
+      .toBe("No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?");
+  });
+  it('keeps a line that is only the callback question', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    expect(g.apply('Would you mind if I have Bob or his partner reach out to you later today?', true))
+      .toBe('Would you mind if I have Bob or his partner reach out to you later today?');
+  });
+});
