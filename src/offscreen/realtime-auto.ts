@@ -34,7 +34,26 @@ function send(message: Record<string, unknown>): void {
   chrome.runtime.sendMessage(message).catch(() => {})
 }
 
+// Local test builds only (VITE_EXPERIMENTS=true): mint with the gateway key from .env.local, so the
+// live coach can be tried on a real call before the backend token route is deployed. Both conditions
+// are static, so a normal build drops the key and this path entirely.
+const LOCAL_KEY =
+  import.meta.env.VITE_EXPERIMENTS === 'true' ? ((import.meta.env.VITE_AI_GATEWAY_API_KEY as string | undefined) || '') : ''
+const LOCAL_MODEL = 'openai/gpt-realtime-mini'
+
+async function mintLocally(): Promise<SessionToken> {
+  const res = await fetch('https://ai-gateway.vercel.sh/v1/realtime/client-secrets', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${LOCAL_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: LOCAL_MODEL }),
+  })
+  if (!res.ok) throw new Error(`local token ${res.status}`)
+  const token = (await res.json()).token
+  return { token, url: `wss://ai-gateway.vercel.sh/v4/ai/realtime-model?ai-model-id=${encodeURIComponent(LOCAL_MODEL)}` }
+}
+
 async function requestToken(): Promise<SessionToken> {
+  if (LOCAL_KEY) return mintLocally()
   // The background wraps handler results as { success, result }.
   const reply = await chrome.runtime.sendMessage({ type: 'GET_REALTIME_TOKEN' })
   const token = reply?.result?.token
