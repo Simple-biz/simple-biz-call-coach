@@ -16,5 +16,16 @@ import { claimsUnscriptedFact, addHisPartner, SCRIPT_DEFLECT } from '../../infra
 export function guardLiveLine(text: string, final: boolean): string | null {
   const offScript = mentionsPrice(text) ? PRICING_REDIRECT : claimsUnscriptedFact(text) ? SCRIPT_DEFLECT : null
   if (offScript) return final ? offScript : null
-  return addHisPartner(text)
+  return oneCallbackAsk(addHisPartner(text))
+}
+
+// The simulator caught the live coach reading two or three rebuttals back to back, each ending in
+// the callback question. Only the last ask is kept; the answers before it stay.
+const CALLBACK_QUESTION = /\s*Would you mind if I have (?:Bob or his partner|them|either of them|him) give you a call[^?]*\?/gi
+
+export function oneCallbackAsk(text: string): string {
+  const asks = text.match(CALLBACK_QUESTION)
+  if (!asks || asks.length < 2) return text
+  let seen = 0
+  return text.replace(CALLBACK_QUESTION, (m) => (++seen < asks.length ? '' : m)).replace(/\s{2,}/g, ' ').trim()
 }

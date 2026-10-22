@@ -34,3 +34,16 @@ describe('guardLiveLine', () => {
     expect(guardLiveLine(SCRIPT_DEFLECT, true)).toBe(SCRIPT_DEFLECT)
   })
 })
+
+describe('oneCallbackAsk', () => {
+  it('keeps only the last callback question when rebuttals are stacked', async () => {
+    const { oneCallbackAsk } = await import('@/utils/live-line-guard');
+    const stacked = "Well, I'm glad I called, then! I'll have Bob or his partner give you a call to talk about building one. Would you mind if I have either of them give you a call? Great question. Bob is in [Place]. Would you mind if I have Bob or his partner give you a call to talk about your website?";
+    expect(oneCallbackAsk(stacked)).toBe("Well, I'm glad I called, then! I'll have Bob or his partner give you a call to talk about building one. Great question. Bob is in [Place]. Would you mind if I have Bob or his partner give you a call to talk about your website?");
+  });
+  it('leaves a single rebuttal alone', async () => {
+    const { oneCallbackAsk } = await import('@/utils/live-line-guard');
+    const one = "No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?";
+    expect(oneCallbackAsk(one)).toBe(one);
+  });
+});
