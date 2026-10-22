@@ -149,6 +149,10 @@ export default function SidePanel() {
         case "CALL_STARTED":
         case "CAPTURE_STARTED":
           useCallStore.getState().startCall();
+          // The live coach owns the card from call start (it opens on the lead's first words);
+          // Get Next Suggestion comes back only if it reports unavailable, fallback or error.
+          realtimeFailed = false;
+          syncRealtimeLive('off');
           console.log("✅ [SidePanel] Call started with session");
           break;
 
