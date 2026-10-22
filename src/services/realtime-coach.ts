@@ -184,9 +184,11 @@ export class LiveCoach {
           this.emit({ type: 'LIVE_COACH_TIP_DROPPED' })
         }
         this.trace('speech detected')
+        this.emit({ type: 'LIVE_COACH_SPEECH', phase: 'started' })
         break
       case 'speech-stopped':
         this.trace('speech ended')
+        this.emit({ type: 'LIVE_COACH_SPEECH', phase: 'stopped' })
         break
       case 'session-updated':
         this.trace('session configured')

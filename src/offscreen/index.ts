@@ -1,7 +1,7 @@
 // Import validator for pre-connection checks
 import { logger } from '@/utils/logger'
 import { startPTTCapture, stopPTTCapture } from './ptt-capture'
-import { armRealtimeAuto, stopRealtimeAuto, realtimeLeadAudio, realtimeLeadSpoke, realtimeNoteAgent } from './realtime-auto'
+import { armRealtimeAuto, stopRealtimeAuto, realtimeLeadAudio, realtimeLeadSpoke, realtimeNoteAgent, realtimeAgentSpoke } from './realtime-auto'
 
 logger.log('✅ Offscreen document ready for audio capture with Deepgram (Dual Stream)')
 
@@ -318,7 +318,10 @@ function handleDualResponse(data: any, source: 'agent' | 'caller') {
     // v3 live coach: the lead's first words open the session; it hears only the lead, so it gets
     // the agent's words as text
     if (source === 'caller') realtimeLeadSpoke()
-    else if (isFinal) realtimeNoteAgent(transcript)
+    else {
+        realtimeAgentSpoke()
+        if (isFinal) realtimeNoteAgent(transcript)
+    }
     const confidence = alt.confidence || 0
     const entities = alt.entities || []
 

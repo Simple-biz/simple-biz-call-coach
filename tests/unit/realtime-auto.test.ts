@@ -309,3 +309,64 @@ describe('guards on live lines', () => {
     expect(sentOf('REALTIME_STATUS').at(-1)).toEqual({ type: 'REALTIME_STATUS', status: 'off', detail: 'fallback' })
   })
 })
+
+// Kayser, 2026-10-23: a "hmm" from the lead while he was reading replaced the line under him.
+describe('lines while the agent is reading', () => {
+  async function liveSession() {
+    grantToken()
+    const m = await load()
+    await m.startRealtimeAuto()
+    const ws = FakeWS.instances[0]
+    ws.open()
+    sendMessage.mockClear()
+    grantToken()
+    return { ws, ...m }
+  }
+  const line = async (ws: FakeWS, text: string) => {
+    ws.event({ type: 'text-delta', delta: text })
+    await flush()
+    ws.event({ type: 'text-done' })
+    await flush()
+  }
+
+  afterEach(() => { vi.useRealTimers() })
+
+  it('drops the reply to a backchannel and keeps the line on screen', async () => {
+    vi.useFakeTimers()
+    const { ws, realtimeAgentSpoke } = await liveSession()
+    realtimeAgentSpoke() // reading the opener
+    ws.event({ type: 'speech-started' }) // "Mhm."
+    vi.advanceTimersByTime(800)
+    realtimeAgentSpoke()
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'Would you mind if I have Bob or his partner give you a call?')
+    vi.advanceTimersByTime(5000)
+    await flush()
+    expect(sentOf('REALTIME_TIP')).toHaveLength(0)
+  })
+
+  it('holds the reply to an interruption until the agent stops, then shows it', async () => {
+    vi.useFakeTimers()
+    const { ws, realtimeAgentSpoke } = await liveSession()
+    realtimeAgentSpoke()
+    ws.event({ type: 'speech-started' }) // "Wait, is this a real person or a robot call?"
+    vi.advanceTimersByTime(2500)
+    realtimeAgentSpoke()
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, "Yes, I'm a real person. I'm Bob's assistant. Are you the one who handles the website?")
+    expect(sentOf('REALTIME_TIP')).toHaveLength(0)
+    vi.advanceTimersByTime(1600)
+    await flush()
+    expect(sentOf('REALTIME_TIP')).toEqual([
+      { type: 'REALTIME_TIP', text: "Yes, I'm a real person. I'm Bob's assistant. Are you the one who handles the website?", final: true },
+    ])
+  })
+
+  it('shows a reply at once when the agent was quiet (an "mhm" that answers)', async () => {
+    const { ws } = await liveSession()
+    ws.event({ type: 'speech-started' })
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'Can I have your first name, please?')
+    expect(sentOf('REALTIME_TIP').at(-1)).toMatchObject({ text: 'Can I have your first name, please?', final: true })
+  })
+})

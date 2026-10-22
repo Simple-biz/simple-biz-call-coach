@@ -19,8 +19,25 @@
 import { logger } from '@/utils/logger'
 import { LiveCoach, type SessionToken } from '@/services/realtime-coach'
 import { LiveLineGuard } from '@/utils/live-line-guard'
+import { LineGate } from '@/utils/line-gate'
 
 let coach: LiveCoach | null = null
+// When a new line may replace the one the agent is reading (line-gate.ts). One per call.
+let gate = new LineGate()
+let held: { text: string; final: boolean } | null = null
+let releaseTimer: ReturnType<typeof setTimeout> | null = null
+
+/** Shows the line held back while the agent was talking, once they stop. */
+function scheduleRelease(): void {
+  if (releaseTimer) clearTimeout(releaseTimer)
+  releaseTimer = setTimeout(() => {
+    releaseTimer = null
+    if (!held) return
+    if (gate.agentTalking()) return scheduleRelease()
+    send({ type: 'REALTIME_TIP', text: held.text, final: held.final })
+    held = null
+  }, gate.msUntilQuiet() + 50)
+}
 // armed: the call started, waiting for the lead's first words. starting: waiting on the token.
 let armed = false
 let starting = false
@@ -129,12 +146,30 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
         case 'LIVE_COACH_TIP': {
           // Streamed word by word. A draft abandoned because the lead kept talking is withdrawn
           // with REALTIME_TIP_DROPPED; the panel then puts the last finished line back.
+          const verdict = gate.verdict()
+          if (verdict === 'drop') {
+            // A reply to the lead's "hmm" while the agent was reading: the line on screen stays.
+            // Not passed through the guard, so it doesn't count as an ask or a question asked.
+            if (msg.final) logger.log(`🎙️ [LiveCoach] backchannel reply dropped: "${String(msg.text).slice(0, 40)}"`)
+            break
+          }
           const text = guard.apply(String(msg.text), !!msg.final)
-          if (text !== null) send({ type: 'REALTIME_TIP', text, final: !!msg.final })
+          if (text === null) break
+          if (verdict === 'hold') {
+            held = { text, final: !!msg.final }
+            scheduleRelease()
+            break
+          }
+          send({ type: 'REALTIME_TIP', text, final: !!msg.final })
           break
         }
         case 'LIVE_COACH_TIP_DROPPED':
+          held = null
           send({ type: 'REALTIME_TIP_DROPPED' })
+          break
+        case 'LIVE_COACH_SPEECH':
+          if (msg.phase === 'started') gate.leadStarted()
+          else gate.leadStopped()
           break
         case 'LIVE_COACH_STATUS':
           send({ type: 'REALTIME_STATUS', status: msg.status, detail: msg.detail })
@@ -190,11 +225,20 @@ export function realtimeNoteAgent(text: string): void {
   coach?.noteAgent(text)
 }
 
+/** Any agent transcript, interim or final: the agent is talking (reading a line). */
+export function realtimeAgentSpoke(): void {
+  gate.agentSpoke()
+}
+
 export function stopRealtimeAuto(): void {
   generation++ // cancels a start still waiting on its token
   armed = starting = false
   preRoll = []
   preRollSamples = 0
+  gate = new LineGate()
+  held = null
+  if (releaseTimer) clearTimeout(releaseTimer)
+  releaseTimer = null
   if (!coach) return
   coach.stop()
   coach = null
