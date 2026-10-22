@@ -66,7 +66,13 @@ export interface Settings {
   audioSensitivity: number;
   enableNotifications: boolean;
   theme: "light" | "dark" | "system";
+  // Panel readability (ported from Call Coach HSL): single-monitor setups need a smaller panel
+  // and a bigger script line.
+  compactMode: boolean; // panel stripped down to the suggested line + the lead's last answer
+  scriptTextSize: ScriptTextSize; // font size of the suggested line
 }
+
+export type ScriptTextSize = "md" | "lg" | "xl";
 
 // Extended Chrome Messages for Deepgram integration
 export interface ChromeMessage {

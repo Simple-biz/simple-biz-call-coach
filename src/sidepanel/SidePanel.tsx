@@ -8,8 +8,11 @@ import {
   Send,
   Sun,
   Moon,
+  Shrink,
+  Expand,
+  Type,
 } from "lucide-react";
-import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption } from "@/types";
+import type { Transcription, CoachingTip, DeepgramStatus, ScriptOption, ScriptTextSize } from "@/types";
 import { ChatThread } from "@/components/ChatThread";
 import { IntelligenceDisplay } from "@/components/IntelligenceDisplay";
 import { SessionStats } from "@/components/SessionStats";
@@ -33,8 +36,9 @@ export default function SidePanel() {
     useState<DeepgramStatus>("disconnected");
   const isLoadingScripts = useCallStore((s) => s.isGeneratingTip);
 
-  // View mode: Live coaching OR Call History
-  const [viewMode, setViewMode] = useState<'live' | 'history'>('live');
+  // View mode: Live (call info) / Script (transcript + suggested line) / History.
+  // Script is the default: it holds the suggested line, which agents read all call long.
+  const [viewMode, setViewMode] = useState<'live' | 'script' | 'history'>('script');
   const [userEmail, setUserEmail] = useState<string | null>(null);
 
   // Sandbox mode: Customer input (text)
@@ -53,6 +57,17 @@ export default function SidePanel() {
 
   // Dark mode — applies the `dark` class to <html> and persists the choice
   const { isDark, toggle: toggleTheme } = useTheme();
+
+  // Compact mode + script size (ported from Call Coach HSL's panel-readability work). Persisted
+  // in the settings store, so an agent's choice survives between calls.
+  const compactMode = useSettingsStore((s) => s.compactMode);
+  const setCompactMode = useSettingsStore((s) => s.setCompactMode);
+  const scriptTextSize = useSettingsStore((s) => s.scriptTextSize);
+  const setScriptTextSize = useSettingsStore((s) => s.setScriptTextSize);
+  const cycleScriptTextSize = () => {
+    const order: ScriptTextSize[] = ["md", "lg", "xl"];
+    setScriptTextSize(order[(order.indexOf(scriptTextSize) + 1) % order.length]);
+  };
 
   useEffect(() => {
     console.log(`📊 [SidePanel] Transcriptions array updated: ${transcriptions.length} items`, transcriptions);
@@ -811,13 +826,19 @@ export default function SidePanel() {
   return (
     <div className="h-screen flex flex-col bg-white">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-[#E0E4E8] bg-white">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className="h-11 dark:brightness-0 dark:invert" />
-            <span className="text-sm font-semibold text-[#1B1F6B]">Call Coach</span>
+      <div className={`border-b border-[#E0E4E8] bg-white ${compactMode ? 'px-3 py-1.5' : 'px-4 py-3'}`}>
+        <div className={`flex items-center justify-between ${compactMode ? '' : 'mb-2'}`}>
+          <div className="flex items-center gap-2 min-w-0">
+            <img src={new URL('../assets/simplebiz-logo.png', import.meta.url).href} alt="Simple.Biz" className={`${compactMode ? 'h-6' : 'h-11'} dark:brightness-0 dark:invert`} />
+            {compactMode && (
+              <div
+                className={`w-2 h-2 rounded-full shrink-0 ${callState === "active" ? "bg-green-500 animate-pulse" : "bg-gray-400"}`}
+                title={callState === "active" ? "Recording" : "Idle"}
+              />
+            )}
+            {!compactMode && <span className="text-sm font-semibold text-[#1B1F6B]">Call Coach</span>}
             {/* Environment Badge */}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold border ${compactMode ? 'hidden' : ''} ${
               environment === 'production'
                 ? 'bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30'
                 : 'bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30'
@@ -825,13 +846,37 @@ export default function SidePanel() {
               {environment === 'production' ? 'PROD' : 'DEV'}
             </span>
             {/* Dark-mode indicator — visible only while dark mode is on */}
-            {isDark && (
+            {isDark && !compactMode && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold border bg-[#1B1F6B]/10 text-[#1B1F6B] border-[#1B1F6B]/30 flex items-center gap-1">
                 <Moon size={9} /> Dark
               </span>
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Suggested-line text size: A -> A+ -> A++ */}
+            <button
+              onClick={cycleScriptTextSize}
+              title={`Script text size: ${{ md: 'normal', lg: 'large', xl: 'extra large' }[scriptTextSize]} — click to change`}
+              aria-label="Change script text size"
+              className="flex items-center justify-center gap-0.5 h-7 px-1.5 rounded-full border border-[#dddddd] text-[#1B1F6B] hover:bg-[#1B1F6B]/10 transition-colors text-[10px] font-bold"
+            >
+              <Type size={13} />
+              {{ md: 'A', lg: 'A+', xl: 'A++' }[scriptTextSize]}
+            </button>
+            {/* Compact mode: strip the panel down to the suggested line */}
+            <button
+              onClick={() => setCompactMode(!compactMode)}
+              title={compactMode ? "Show the full panel" : "Compact mode — show only the suggested line"}
+              aria-label="Toggle compact mode"
+              aria-pressed={compactMode}
+              className={`flex items-center justify-center w-7 h-7 rounded-full border transition-colors ${
+                compactMode
+                  ? 'bg-[#1B1F6B] text-white border-[#1B1F6B]'
+                  : 'border-[#dddddd] text-[#1B1F6B] hover:bg-[#1B1F6B]/10'
+              }`}
+            >
+              {compactMode ? <Expand size={14} /> : <Shrink size={14} />}
+            </button>
             {/* Dark-mode toggle */}
             <button
               onClick={toggleTheme}
@@ -843,10 +888,10 @@ export default function SidePanel() {
               {isDark ? <Sun size={15} /> : <Moon size={15} />}
             </button>
             {getDeepgramStatusIcon()}
-            {getDeepgramStatusText()}
+            {!compactMode && getDeepgramStatusText()}
           </div>
         </div>
-        <div className="flex items-center justify-between">
+        <div className={`flex items-center justify-between ${compactMode ? 'hidden' : ''}`}>
           <div className="flex items-center gap-2">
             <div
               className={`w-2 h-2 rounded-full ${
@@ -891,8 +936,8 @@ export default function SidePanel() {
         </div>
       </div>
 
-      {/* Live / History Toggle */}
-      <div className="flex border-b border-[#E0E4E8] bg-white">
+      {/* Live / Script / History Toggle */}
+      <div className={`flex border-b border-[#E0E4E8] bg-white ${compactMode ? 'hidden' : ''}`}>
         <button
           onClick={() => setViewMode('live')}
           className={`flex-1 py-2 text-sm font-medium transition-colors ${
@@ -902,6 +947,16 @@ export default function SidePanel() {
           }`}
         >
           Live
+        </button>
+        <button
+          onClick={() => setViewMode('script')}
+          className={`flex-1 py-2 text-sm font-medium transition-colors ${
+            viewMode === 'script'
+              ? 'text-[#1B1F6B] border-b-2 border-[#1B1F6B]'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          Script
         </button>
         <button
           onClick={() => setViewMode('history')}
@@ -916,14 +971,29 @@ export default function SidePanel() {
       </div>
 
       {/* HISTORY VIEW */}
-      {viewMode === 'history' && (
+      {viewMode === 'history' && !compactMode && (
         <div className="flex-1 overflow-hidden">
           <HistoryTab agentEmail={userEmail} />
         </div>
       )}
 
+      {/* SCRIPT VIEW — the transcript with the suggested line pinned under it: everything the
+          agent reads during the call. Live holds only the call info. */}
+      {viewMode === 'script' && !compactMode && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col pt-2">
+          <ChatThread
+            transcriptions={transcriptions}
+            callState={callState}
+            isLoadingScripts={isLoadingScripts}
+            onSelectScript={handleSelectScript}
+            onExportText={exportTranscriptsAsText}
+            onExportJSON={exportTranscriptsAsJSON}
+          />
+        </div>
+      )}
+
       {/* DUAL-VIEW MAIN CONTENT (Live) */}
-      {viewMode === 'live' && (environment === 'sandbox' ? (
+      {(viewMode === 'live' || compactMode) && (environment === 'sandbox' ? (
         /* ========== SANDBOX MODE VIEW ========== */
         <div className="flex-1 overflow-y-auto flex flex-col">
           {/* Sandbox Header */}
@@ -1091,7 +1161,7 @@ export default function SidePanel() {
         /* ========== PRODUCTION MODE VIEW ========== */
         <div className="flex-1 overflow-hidden flex flex-col">
           {/* Audio Level Indicator (Production only) */}
-          {callState === "active" && (
+          {callState === "active" && !compactMode && (
             <div className="p-4 bg-card border-b">
               <div className="flex items-center gap-2 mb-2">
                 <Mic size={16} />
@@ -1109,11 +1179,10 @@ export default function SidePanel() {
             </div>
           )}
 
-          {/* Production Conversation Thread - always visible */}
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-            {/* Conversation Intelligence Display - hidden when thread expanded */}
-            {!threadExpanded && (
-              <div className={`px-3 pt-2 pb-1 overflow-y-auto ${threadVisible ? 'max-h-[35%] shrink-0' : 'flex-1'}`}>
+            {/* LIVE tab = call info only. The transcript and suggested line live on Script. */}
+            {!compactMode && (
+              <div className="flex-1 px-3 pt-2 pb-1 overflow-y-auto">
                 <IntelligenceDisplay
                   intelligence={intelligence}
                   entities={entities}
@@ -1122,25 +1191,25 @@ export default function SidePanel() {
               </div>
             )}
 
-            {/* Chat Thread */}
-            <ChatThread
-              transcriptions={transcriptions}
-              callState={callState}
-              isLoadingScripts={isLoadingScripts}
-              onSelectScript={handleSelectScript}
-              onExportText={exportTranscriptsAsText}
-              onExportJSON={exportTranscriptsAsJSON}
-              expanded={threadExpanded}
-              collapsed={!threadVisible && !threadExpanded}
-              onToggleExpand={() => { setThreadExpanded(!threadExpanded); setThreadVisible(true); }}
-              onToggleCollapse={() => { setThreadVisible(!threadVisible); setThreadExpanded(false); }}
-            />
+            {/* Compact mode: just the suggested line + the lead's last answer. Opening the
+                thread from its bar leaves compact mode for the Script tab. */}
+            {compactMode && (
+              <ChatThread
+                transcriptions={transcriptions}
+                callState={callState}
+                isLoadingScripts={isLoadingScripts}
+                onSelectScript={handleSelectScript}
+                collapsed
+                compact
+                onToggleCollapse={() => { setCompactMode(false); setViewMode('script'); }}
+              />
+            )}
           </div>
         </div>
       ))}
 
       {/* Footer Stats */}
-      {!threadExpanded && (transcriptions.length > 0 || callState === "active") && (
+      {!threadExpanded && !compactMode && viewMode !== 'script' && (transcriptions.length > 0 || callState === "active") && (
         <SessionStats
           transcriptions={transcriptions}
           coachingTips={coachingTips}

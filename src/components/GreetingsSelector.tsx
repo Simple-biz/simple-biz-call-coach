@@ -1,7 +1,9 @@
 import { MessageSquare, Zap, Sparkles, AlertCircle, ArrowRight } from 'lucide-react'
 import { useCallStore } from '@/stores/call-store'
+import { useShallow } from 'zustand/react/shallow'
+import { useSettingsStore } from '@/stores/settings-store'
 import { OPENER } from '../../infra/lib/experiments/live-coach-instructions'
-import type { ScriptOption } from '@/types'
+import type { ScriptOption, ScriptTextSize } from '@/types'
 import { logger } from '@/utils/logger'
 
 interface GreetingsSelectorProps {
@@ -23,8 +25,27 @@ const INITIAL_GREETINGS: ScriptOption[] = [
   }
 ]
 
+// Agents read this line aloud mid-call, often on one shared monitor: it was 13px with tight
+// leading. Default is now `lg`; the A/A+/A++ control in the side-panel header switches size.
+// (Ported from Call Coach HSL's panel-readability work.)
+const SCRIPT_TEXT_CLASS: Record<ScriptTextSize, string> = {
+  md: 'text-[15px] leading-normal',
+  lg: 'text-[17px] leading-relaxed',
+  xl: 'text-[20px] leading-relaxed',
+}
+
 export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSelectorProps) {
-  const { currentScriptOptions, streamingTip, realtimeLive } = useCallStore()
+  const scriptTextSize = useSettingsStore((s) => s.scriptTextSize)
+  // Selector + useShallow instead of a bare `useCallStore()`: a bare call subscribes to the whole
+  // store, so the card re-rendered on every transcript line and audio-level tick. Now that the
+  // Script tab shows this card all call long, it re-renders only when these fields change.
+  const { currentScriptOptions, streamingTip, realtimeLive } = useCallStore(
+    useShallow((s) => ({
+      currentScriptOptions: s.currentScriptOptions,
+      streamingTip: s.streamingTip,
+      realtimeLive: s.realtimeLive,
+    }))
+  )
   const isStreaming = !!streamingTip
 
   // Use the single option if available, otherwise fallback to first initial greeting
@@ -56,7 +77,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
     <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <div className="flex items-center gap-1.5 mb-0.5 px-1">
         <Sparkles className="w-3 h-3 text-[#1B1F6B]" />
-        <span className="text-[9px] font-bold text-[#1B1F6B] uppercase tracking-widest">
+        <span className="text-[10px] font-bold text-[#1B1F6B] uppercase tracking-widest">
           AI Suggested Line
         </span>
         {(isLoading || isStreaming) && (
@@ -70,7 +91,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
 
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#1B1F6B] rounded-lg blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
-        <div className="relative p-2.5 bg-white backdrop-blur-md border border-[#dddddd] rounded-lg shadow-lg">
+        <div className="relative p-3 bg-white backdrop-blur-md border border-[#dddddd] rounded-lg shadow-lg">
           <div className="flex items-start gap-1.5">
             <div className="mt-0.5 p-1 rounded-md bg-[#1B1F6B]/10 border border-[#1B1F6B]/20">
               {option?.id?.includes('greeting') ? (
@@ -87,7 +108,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
                 <span className="text-[8px] text-[#757575] font-mono">Mk1 v1</span>
               </div>
               <div
-                className="text-[13px] leading-snug text-[#333333] font-normal selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-0.5 rounded transition-colors"
+                className={`${SCRIPT_TEXT_CLASS[scriptTextSize] ?? SCRIPT_TEXT_CLASS.lg} text-[#333333] font-medium selection:bg-[#1B1F6B]/30 cursor-pointer hover:bg-gray-100 p-0.5 rounded transition-colors`}
                 onClick={() => !isLoading && !isStreaming && option && onSelect(option)}
                 title={isStreaming ? "Generating..." : "Click to use this script"}
               >
@@ -107,7 +128,7 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
           </div>
 
           {realtimeLive && (
-            <p className="mt-2 text-center text-[9px] text-[#757575] font-medium italic">
+            <p className="mt-2 text-center text-[10px] text-[#757575] font-medium italic">
               Live coach is on: the next line appears as the lead talks.
             </p>
           )}
