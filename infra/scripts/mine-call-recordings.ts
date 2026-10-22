@@ -251,7 +251,12 @@ async function review(calls: Call[]) {
 
 // ---------------------------------------------------------------------------------------------
 function report() {
-  const rows = readdirSync(REVIEWS).map((f) => JSON.parse(readFileSync(join(REVIEWS, f), 'utf8')));
+  // Lead gen only (Kayser, 2026-10-23): west-3 also carries billing, other campaigns and other
+  // businesses' calls, all in the no-campaign (inbound/manual) bucket. Campaign calls are lead gen;
+  // a no-campaign call counts only when the review found the Bob's-assistant script in it.
+  const all = readdirSync(REVIEWS).map((f) => JSON.parse(readFileSync(join(REVIEWS, f), 'utf8')));
+  const isLeadGen = (r: any) => r.call.campaign != null || r.review.script_adherence >= 2;
+  const rows = all.filter(isLeadGen);
   const q = (r: any) => Object.values(r.review.qualifiers).filter(Boolean).length;
   const booked = rows.filter((r) => r.call.disposition === 'Appointment Scheduled');
   const best = [...booked].sort((a, b) => b.review.overall - a.review.overall || q(b) - q(a) || b.review.script_adherence - a.review.script_adherence);
@@ -274,7 +279,7 @@ function report() {
   const pct = (n: number, d: number) => (d ? `${Math.round((100 * n) / d)}%` : '-');
   const lines: string[] = [
     `# Call mining report: ${RUN} (${AFTER} to ${BEFORE})`, '',
-    `${rows.length} calls reviewed by ${MODEL} against the official script (talk >= ${MIN_TALK}s). Booked: ${booked.length}.`,
+    `${rows.length} lead gen calls reviewed by ${MODEL} against the official script (talk >= ${MIN_TALK}s); ${all.length - rows.length} other-team calls left out. Booked: ${booked.length}.`,
     `Review tokens: ${usage.i.toLocaleString()} in, ${usage.o.toLocaleString()} out.`, '',
     '## Qualifiers on booked calls', '',
     '| Qualifier | Met |', '|---|---|',
