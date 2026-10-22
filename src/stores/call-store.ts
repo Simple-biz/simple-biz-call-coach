@@ -136,7 +136,8 @@ export const useCallStore = create<CallStore>((set, get) => ({
   // Streaming tip initial state
   streamingTip: null,
   isGeneratingTip: false,
-  realtimeLive: false,
+  // The live coach is always on (v3); the button returns only if it reports unavailable or fails.
+  realtimeLive: true,
 
   startCall: () => {
     const newState = {

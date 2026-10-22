@@ -31,6 +31,10 @@ const realSendMessage = (globalThis as any).chrome.runtime.sendMessage
 let mod: typeof import('@/offscreen/realtime-auto') | null = null
 
 beforeEach(() => {
+  // A developer's .env.local may hold VITE_EXPERIMENTS and a gateway key for a local test build;
+  // these tests cover the backend token path and must never mint a real token.
+  vi.stubEnv('VITE_EXPERIMENTS', 'false')
+  vi.stubEnv('VITE_AI_GATEWAY_API_KEY', '')
   vi.resetModules()
   FakeWS.instances = []
   sendMessage.mockReset()

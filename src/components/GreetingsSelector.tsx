@@ -1,5 +1,6 @@
 import { MessageSquare, Zap, Sparkles, AlertCircle, ArrowRight } from 'lucide-react'
 import { useCallStore } from '@/stores/call-store'
+import { OPENER } from '../../infra/lib/experiments/live-coach-instructions'
 import type { ScriptOption } from '@/types'
 import { logger } from '@/utils/logger'
 
@@ -9,13 +10,15 @@ interface GreetingsSelectorProps {
   onRegenerate?: () => void // Kept for interface compatibility but optional
 }
 
-// Initial greeting scripts for website builder sales
+// The card before the first line arrives: the official opener (doc/reference/official-call-script.md),
+// the same text the live coach is told to give. The old "Hi, this is [Agent Name] from Simple.Biz"
+// line was not in the script.
 const INITIAL_GREETINGS: ScriptOption[] = [
   {
     id: 'greeting-basic',
     type: 'greeting',
-    label: 'Greeting',
-    script: "Hi, this is [Agent Name] from Simple.Biz. I'm reaching out about your business website - do you have a minute?",
+    label: 'Opener',
+    script: OPENER,
     icon: 'message'
   }
 ]
