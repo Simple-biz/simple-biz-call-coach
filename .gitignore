@@ -51,3 +51,6 @@ bmad-custom-src/
 ._*
 
 devassist-call-coach-backend/
+
+# Simulator run logs (infra/scripts/simulate-lead-persona.ts)
+infra/sim-logs/

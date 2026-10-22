@@ -19,17 +19,31 @@
  *        --random [N] (N generated personas, default 1)  --seed S (repeat a random run)
  *        --judge (a second model grades each call against the official script)
  *        --verbose (keep the Lambda code's own console logging)
+ *        --engine standard|realtime|both (default standard: today's coach, unchanged)
+ *          realtime = the v3 live coach (gpt-realtime-mini via AI Gateway, scripts/sim-live-coach.ts):
+ *          the lead's lines are spoken (tts-1) and streamed in real time; the agent reads the live
+ *          coach's final line, after the extension's guards (src/utils/live-line-guard.ts), and the
+ *          session gets "The agent just said: ..." as a context note, as on a real call.
+ *          both = each persona runs on both engines (same lead model, persona and seed).
+ *        --parallel N (calls at once; default all)  --max-spend USD (gateway spend cap, default 5)
+ *
+ * Every call is saved as it finishes to infra/sim-logs/<run-id>/<persona>.<engine>.json, and
+ * summary.json (per-engine metrics) at the end. Compare engines:
+ *   npm run sim -- --engine both --judge --seed 42
  *
  * Needs the `simple-biz` AWS profile: the Anthropic key is read from Secrets
- * Manager `call-coach/api-keys`, exactly as the Lambdas do.
+ * Manager `call-coach/api-keys`, exactly as the Lambdas do. The realtime engine also needs
+ * AI_GATEWAY_API_KEY (environment or the repo-root .env.local).
  */
 import './sim-env';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { mkdirSync, readFileSync, writeFileSync } from 'fs';
+import { join, resolve } from 'path';
 import Anthropic from '@anthropic-ai/sdk';
 import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
+import { guardLiveLine } from '../../src/utils/live-line-guard';
+import { LiveSession, LIVE_MODEL, gatewayCredits, gatewayKey, tts } from './sim-live-coach';
 
 const LEAD_MODEL = process.env.LEAD_MODEL || 'claude-sonnet-5-5';
 const AGENT_NAME = 'Jen';
@@ -56,7 +70,12 @@ const randomArg = opt('random');
 const randomCount = randomArg !== undefined && /^\d+$/.test(randomArg) ? randomArg : undefined;
 const RANDOM = flag('random') ? Number(randomCount ?? 1) : 0;
 const SEED = Number(opt('seed') ?? Math.floor(Math.random() * 1e9));
-const optValues = new Set([randomCount, opt('seed')].filter(Boolean));
+const ENGINE = opt('engine') ?? 'standard';
+if (!['standard', 'realtime', 'both'].includes(ENGINE)) { console.error(`--engine must be standard, realtime or both (got "${ENGINE}")`); process.exit(1); }
+const ENGINES: Engine[] = ENGINE === 'both' ? ['standard', 'realtime'] : [ENGINE as Engine];
+const PARALLEL = Number(opt('parallel') ?? Infinity);
+const MAX_SPEND = Number(opt('max-spend') ?? 5);
+const optValues = new Set([randomCount, opt('seed'), opt('engine'), opt('parallel'), opt('max-spend')].filter(Boolean));
 const named = argv.filter(a => !a.startsWith('--') && !optValues.has(a));
 
 // Our own output goes straight to stdout; console.log is silenced for the Lambda code's noise.
@@ -171,6 +190,7 @@ function randomPersona(r: () => number, n: number): [string, string] {
 // Simulation
 // ---------------------------------------------------------------------------
 type Turn = { speaker: 'agent' | 'caller'; text: string };
+type Engine = 'standard' | 'realtime';
 type Verdict = { outcome: string; violations: string[]; notes: string[] };
 
 // Second opinion: a separate model grades the finished call against the official script.
@@ -260,73 +280,287 @@ function check(raw: string, transcripts: Turn[]): string[] {
   return f;
 }
 
-async function runPersona(key: string, persona: string, lead: Anthropic) {
-  const transcripts: Turn[] = [];
+type LeadMsg = { role: 'user' | 'assistant'; content: string };
+async function leadSay(lead: Anthropic, persona: string, history: LeadMsg[], attempt = 0): Promise<string> {
+  const msgs = [...history];
+  if (msgs.length === 0 || msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '(phone rings, you pick up)' });
+  const r = await lead.messages.create({ model: LEAD_MODEL, max_tokens: 400, system: leadSystem(persona), messages: msgs });
+  const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('').trim();
+  return text || (attempt < 2 ? leadSay(lead, persona, history, attempt + 1) : '[HANGUP]');
+}
+
+const fillPlaceholders = (raw: string) =>
+  raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
+
+type TurnLog = {
+  turn: number; lead: string;
+  coachRaw?: string; // what the coach produced
+  coachShown?: string; // after the code guards (standard: inside the backend; realtime: live-line-guard)
+  spoken?: string; // what the agent read (placeholders filled)
+  flags: string[]; rawFlags?: string[];
+  delayMs?: number; // standard: tip latency; realtime: lead stopped -> first text
+  stage?: string; heading?: string; fallback?: boolean; noReply?: boolean;
+};
+type CallResult = {
+  runId: string; key: string; engine: Engine; persona: string; seed: number;
+  leadModel: string; coachModel: string; startedAt: string; wallSeconds: number;
+  outcome: string; transcripts: Turn[]; turns: TurnLog[]; flags: string[]; rawFlags: string[];
+  verdict?: Verdict; noReply: number; premature: string[]; late: string[]; fallbacks: number;
+  costUsd: number; costNote: string; ttsCostUsd?: number; leadHeard?: string[]; errors: string[];
+};
+
+const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, '-')}-${ENGINE}-seed${SEED}`;
+const OUT_DIR = resolve(__dirname, '..', 'sim-logs', RUN_ID);
+const save = (r: CallResult) => writeFileSync(join(OUT_DIR, `${r.key}.${r.engine}.json`), JSON.stringify(r, null, 2));
+
+// Haiku 4.5 list price per token (cache writes are not reported by the tip client, so not counted).
+const HAIKU = { input: 1 / 1e6, cachedRead: 0.1 / 1e6, output: 5 / 1e6 };
+
+function newResult(key: string, persona: string, engine: Engine): CallResult {
+  return {
+    runId: RUN_ID, key, engine, persona, seed: SEED, leadModel: LEAD_MODEL,
+    coachModel: engine === 'realtime' ? LIVE_MODEL : process.env.CLAUDE_HAIKU_MODEL || 'haiku',
+    startedAt: new Date().toISOString(), wallSeconds: 0, outcome: 'max turns', transcripts: [], turns: [],
+    flags: [], rawFlags: [], noReply: 0, premature: [], late: [], fallbacks: 0, costUsd: 0,
+    costNote: engine === 'realtime' ? 'live coach response usage (realtime-pricing.ts); TTS is simulation overhead, shown apart'
+      : 'tip tokens only (Haiku list price; cache writes and the intelligence call are not metered)',
+    errors: [],
+  };
+}
+
+async function finish(r: CallResult, lead: Anthropic, emit: (s: string) => void, t0: number) {
+  r.wallSeconds = (Date.now() - t0) / 1000;
+  emit(r.flags.length ? red(`FLAGS (${r.flags.length}):\n  ${r.flags.join('\n  ')}`) : green('FLAGS: none'));
+  if (r.engine === 'realtime') {
+    if (r.rawFlags.length > r.flags.length) emit(yellow(`  (before the extension's guards: ${r.rawFlags.length} flag(s))`));
+    if (r.premature.length) emit(yellow(`  premature lines (not used): ${r.premature.length}`));
+    if (r.noReply) emit(yellow(`  no-reply turns: ${r.noReply}`));
+  }
+  if (r.errors.length) emit(red(`ERRORS: ${r.errors.join(' | ')}`));
+  emit(dim(`ended: ${r.outcome}, ${r.transcripts.length} lines, $${r.costUsd.toFixed(4)}, ${r.wallSeconds.toFixed(0)}s`));
+  save(r); // saved before judging, so a killed run keeps the call
+  if (JUDGE && r.transcripts.length) {
+    r.verdict = await judge(lead, r.persona, r.transcripts).catch(e => ({ outcome: 'judge error', violations: [], notes: [String(e?.message || e)] }));
+    emit((r.verdict.violations.length ? red : green)(`JUDGE: ${r.verdict.outcome} · ${r.verdict.violations.length} violation(s)`));
+    for (const x of r.verdict.violations) emit(red(`  ✗ ${x}`));
+    for (const x of r.verdict.notes) emit(yellow(`  · ${x}`));
+    save(r);
+  }
+}
+
+function makeEmitter(key: string, engine: Engine, persona: string) {
+  const buf: string[] = [];
+  // Live: print as it happens. Batch: buffer so parallel calls don't interleave.
+  const emit = (line: string) => (LIVE ? say(line) : buf.push(line));
+  emit(bold(`\n━━━━━━━━━━ ${key} · ${engine} ━━━━━━━━━━`));
+  emit(dim(`persona: ${persona}`));
+  return { emit, flush: () => { if (!LIVE) say(buf.join('\n')); } };
+}
+
+// ── standard: today's coach (generateAITipStreaming + background intelligence) ──
+async function runStandard(key: string, persona: string, lead: Anthropic): Promise<CallResult> {
+  const r = newResult(key, persona, 'standard');
+  const t0 = Date.now();
+  const { emit, flush } = makeEmitter(key, 'standard', persona);
+  const transcripts = r.transcripts;
   const facts = new Set<string>();
   const prevSuggestions: string[] = [];
   const hw: { v?: string } = {};
   let intel: any = null;
-  const flags: string[] = [];
-  const buf: string[] = [];
-  // Live: print as it happens. Batch: buffer so parallel calls don't interleave.
-  const emit = (line: string) => (LIVE ? say(line) : buf.push(line));
 
-  emit(bold(`\n━━━━━━━━━━ ${key} ━━━━━━━━━━`));
-  emit(dim(`persona: ${persona}`));
+  try {
+    for (let i = 0; i < MAX_LEAD_TURNS; i++) {
+      const said = await leadSay(lead, persona, transcripts.map(t => ({ role: t.speaker === 'caller' ? 'assistant' as const : 'user' as const, content: t.text })));
+      if (said.includes('[HANGUP]')) { emit(cyan('LEAD   ') + dim('[hangs up]')); r.outcome = 'lead hung up'; break; }
+      transcripts.push({ speaker: 'caller', text: said });
+      emit(cyan('LEAD   ') + said);
 
-  const leadSay = async (attempt = 0): Promise<string> => {
-    const msgs = transcripts.map(t => ({ role: t.speaker === 'caller' ? 'assistant' as const : 'user' as const, content: t.text }));
-    if (msgs.length === 0 || msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '(phone rings, you pick up)' });
-    const r = await lead.messages.create({ model: LEAD_MODEL, max_tokens: 400, system: leadSystem(persona), messages: msgs });
-    const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('').trim();
-    return text || (attempt < 2 ? leadSay(attempt + 1) : '[HANGUP]');
+      const s = detectStage(transcripts, intel, hw);
+      factsFrom(intel, facts);
+      const tStart = Date.now();
+      const tip = await generateAITipStreaming({
+        conversationId: `sim-${key}`,
+        callStage: s.stage as any,
+        recentTranscript: transcripts.slice(-8).map(t => `${t.speaker.toUpperCase()}: "${t.text}"`).join('\n'),
+        conversationSummary: intel?.summary,
+        transcriptCount: transcripts.length,
+        previousSuggestions: prevSuggestions.slice(-10),
+        conversationFacts: Array.from(facts),
+        collectedInfo: { customerName: s.hasName, businessName: s.business, phoneNumber: s.hasPhone, email: s.hasEmail },
+      }, async () => {});
+      const ms = Date.now() - tStart;
+      const raw = tip.suggestion.trim().replace(/^"|"$/g, '');
+      prevSuggestions.push(raw);
+      const tm = tip.tokenMetrics;
+      r.costUsd += tm.input * HAIKU.input + tm.cached * HAIKU.cachedRead + tm.output * HAIKU.output;
+      const log: TurnLog = { turn: i + 1, lead: said, coachRaw: raw, coachShown: raw, flags: [], delayMs: ms, stage: s.stage, heading: tip.heading };
+      // Canned fallbacks (getFallbackSuggestion) and the OpenAI fallback report no output tokens;
+      // a real Claude answer always does. Matching on text would misfire: a canned line is also a valid Ask Callback.
+      if (tm.output === 0) { log.fallback = true; r.fallbacks++; r.flags.push(`turn ${i + 1}: FALLBACK: tip timed out or failed, canned line shown (${ms}ms)`); emit(red('   ⚠ FALLBACK: canned line (timeout/failure)')); }
+      for (const f of check(raw, transcripts)) { log.flags.push(f); r.flags.push(`turn ${i + 1}: ${f}`); r.rawFlags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
+      const spoken = fillPlaceholders(raw);
+      log.spoken = spoken;
+      r.turns.push(log);
+      transcripts.push({ speaker: 'agent', text: spoken });
+      emit(magenta('AGENT  ') + spoken + dim(`   [${s.stage} → ${tip.heading} · ${ms}ms]`));
+
+      // Intelligence refreshes in the background in prod — lands for the NEXT turn.
+      // Pass a copy: the intelligence client reverses the array in place.
+      intel = await generateConversationIntelligence({ conversationId: `sim-${key}`, transcripts: transcripts.map(t => ({ ...t })) }).catch(() => intel);
+    }
+  } catch (e: any) {
+    r.errors.push(String(e?.message || e)); r.outcome = 'error';
+  }
+  await finish(r, lead, emit, t0);
+  flush();
+  return r;
+}
+
+// ── realtime: the v3 live coach, fed the lead's speech in real time ──
+async function runRealtime(key: string, persona: string, lead: Anthropic, spendStart: number | null): Promise<CallResult> {
+  const r = newResult(key, persona, 'realtime');
+  r.ttsCostUsd = 0;
+  const t0 = Date.now();
+  const { emit, flush } = makeEmitter(key, 'realtime', persona);
+  const transcripts = r.transcripts;
+  const leadView: LeadMsg[] = [];
+  let session: LiveSession | null = null;
+
+  try {
+    if (spendStart !== null) {
+      const now = await gatewayCredits();
+      if (now && now.totalUsed - spendStart > MAX_SPEND) throw new Error(`spend cap: gateway total_used up $${(now.totalUsed - spendStart).toFixed(2)} (> $${MAX_SPEND}) — call skipped`);
+    }
+    session = await LiveSession.open();
+    for (let i = 0; i < MAX_LEAD_TURNS; i++) {
+      const said = await leadSay(lead, persona, leadView);
+      if (said.includes('[HANGUP]')) { emit(cyan('LEAD   ') + dim('[hangs up]')); r.outcome = 'lead hung up'; break; }
+      transcripts.push({ speaker: 'caller', text: said });
+      leadView.push({ role: 'assistant', content: said });
+      emit(cyan('LEAD   ') + said);
+
+      const voice = await tts(said);
+      r.ttsCostUsd += voice.costUsd;
+      await session.speak(voice.pcm);
+      const reply = await session.awaitReply();
+      if (session.isClosed) throw new Error(`live session closed: ${session.errors.join(' | ') || 'no reason'}`);
+      const log: TurnLog = { turn: i + 1, lead: said, flags: [] };
+      if (!reply) {
+        r.noReply++; log.noReply = true; r.turns.push(log);
+        emit(magenta('AGENT  ') + red('(no line from the live coach in 15 s)'));
+        leadView.push({ role: 'user', content: '(Silence on the line. The person who called you says nothing.)' });
+        continue;
+      }
+      const raw = reply.text.trim().replace(/^"|"$/g, '');
+      // What the extension shows: the same guards realtime-auto.ts runs on every final live line.
+      const shown = guardLiveLine(raw, true) ?? raw;
+      log.coachRaw = raw; log.coachShown = shown; log.delayMs = reply.delayMs;
+      for (const f of check(shown, transcripts)) { log.flags.push(f); r.flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
+      if (shown !== raw) {
+        log.rawFlags = check(raw, transcripts);
+        emit(yellow(`   ↺ guard rewrote: ${raw}`));
+      } else log.rawFlags = log.flags;
+      for (const f of log.rawFlags) r.rawFlags.push(`turn ${i + 1}: ${f}`);
+      const spoken = fillPlaceholders(shown);
+      log.spoken = spoken;
+      r.turns.push(log);
+      transcripts.push({ speaker: 'agent', text: spoken });
+      leadView.push({ role: 'user', content: spoken });
+      session.noteAgent(spoken);
+      emit(magenta('AGENT  ') + spoken + dim(`   [live · ${reply.delayMs}ms]`));
+    }
+  } catch (e: any) {
+    r.errors.push(String(e?.message || e)); if (r.outcome === 'max turns') r.outcome = 'error';
+  } finally {
+    if (session) {
+      await session.close();
+      r.costUsd = session.costUsd;
+      r.premature = session.premature;
+      r.late = session.late;
+      r.leadHeard = session.leadHeard;
+      r.errors.push(...session.errors.filter(e => !r.errors.some(x => x.includes(e))));
+    }
+  }
+  await finish(r, lead, emit, t0);
+  flush();
+  return r;
+}
+
+// ---------------------------------------------------------------------------
+// Scoring
+// ---------------------------------------------------------------------------
+const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
+const normWords = (s: string) => new Set(s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean));
+function jaccard(a: string, b: string) { const A = normWords(a), B = normWords(b); let i = 0; for (const w of A) if (B.has(w)) i++; return A.size && B.size ? i / (A.size + B.size - i) : 0; }
+const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : null; };
+const rule = (flag: string) => flag.replace(/^turn \d+: /, '').replace(/ \(\d+ms\)$/, '');
+const countBy = (xs: string[]) => xs.reduce<Record<string, number>>((m, x) => ((m[x] = (m[x] || 0) + 1), m), {});
+const TALK_WPM = 150; // estimated talk time: every word in the call at 150 words/min
+
+function callMetrics(r: CallResult) {
+  const lines = r.turns.filter(t => t.spoken).map(t => t.spoken!);
+  let repeats = 0;
+  lines.forEach((a, i) => { if (lines.slice(0, i).some(b => jaccard(a, b) >= 0.75)) repeats++; });
+  const wc = lines.map(words);
+  const talkMin = r.transcripts.reduce((n, t) => n + words(t.text), 0) / TALK_WPM;
+  return {
+    key: r.key, engine: r.engine, outcome: r.outcome, lines: lines.length, words: wc, repeats,
+    over25: wc.filter(n => n > 25).length, delays: r.turns.filter(t => t.delayMs !== undefined).map(t => t.delayMs!),
+    flags: r.flags.map(rule), rawFlags: r.rawFlags.map(rule), guardRewrites: r.turns.filter(t => t.coachRaw && t.coachRaw !== t.coachShown).length,
+    judge: r.verdict, noReply: r.noReply, premature: r.premature.length, late: r.late.length, fallbacks: r.fallbacks,
+    costUsd: r.costUsd, ttsCostUsd: r.ttsCostUsd, talkMin, wallMin: r.wallSeconds / 60, errors: r.errors,
   };
+}
 
-  let outcome = 'max turns';
-  for (let i = 0; i < MAX_LEAD_TURNS; i++) {
-    const said = await leadSay();
-    if (said.includes('[HANGUP]')) { emit(cyan('LEAD   ') + dim('[hangs up]')); outcome = 'lead hung up'; break; }
-    transcripts.push({ speaker: 'caller', text: said });
-    emit(cyan('LEAD   ') + said);
+function engineSummary(engine: Engine, results: CallResult[]) {
+  const ms = results.filter(r => r.engine === engine).map(callMetrics);
+  const allWords = ms.flatMap(m => m.words);
+  const cost = ms.reduce((n, m) => n + m.costUsd, 0);
+  const talk = ms.reduce((n, m) => n + m.talkMin, 0);
+  const wall = ms.reduce((n, m) => n + m.wallMin, 0);
+  const judged = ms.filter(m => m.judge && m.judge.outcome !== 'judge error');
+  const delays = ms.flatMap(m => m.delays);
+  return {
+    engine, calls: ms.length, callsWithErrors: ms.filter(m => m.errors.length).length, lines: allWords.length,
+    scriptViolations: { total: ms.reduce((n, m) => n + m.flags.length, 0), byRule: countBy(ms.flatMap(m => m.flags)) },
+    ...(engine === 'realtime' ? {
+      scriptViolationsBeforeGuards: { total: ms.reduce((n, m) => n + m.rawFlags.length, 0), byRule: countBy(ms.flatMap(m => m.rawFlags)) },
+      guardRewrites: ms.reduce((n, m) => n + m.guardRewrites, 0),
+    } : { fallbacks: ms.reduce((n, m) => n + m.fallbacks, 0) }),
+    judge: JUDGE ? {
+      pass: judged.filter(m => !m.judge!.violations.length).length, fail: judged.filter(m => m.judge!.violations.length).length,
+      violations: judged.reduce((n, m) => n + m.judge!.violations.length, 0), outcomes: countBy(judged.map(m => m.judge!.outcome)),
+    } : null,
+    avgWordsPerLine: allWords.length ? +(allWords.reduce((a, b) => a + b, 0) / allWords.length).toFixed(1) : 0,
+    linesOver25Words: ms.reduce((n, m) => n + m.over25, 0),
+    repeats: ms.reduce((n, m) => n + m.repeats, 0),
+    medianReplyDelayMs: median(delays),
+    replyDelayMeaning: engine === 'realtime' ? 'lead stopped speaking -> first text of the line' : 'tip request -> full tip (Haiku latency; no audio)',
+    prematureLines: ms.reduce((n, m) => n + m.premature, 0),
+    lateLines: ms.reduce((n, m) => n + m.late, 0),
+    noReplyTurns: ms.reduce((n, m) => n + m.noReply, 0),
+    costUsd: +cost.toFixed(4),
+    costNote: results.find(r => r.engine === engine)?.costNote,
+    estTalkMinutes: +talk.toFixed(2),
+    costPerTalkMinute: talk ? +(cost / talk).toFixed(4) : null,
+    ...(engine === 'realtime' ? {
+      sessionMinutes: +wall.toFixed(2), costPerSessionMinute: wall ? +(cost / wall).toFixed(4) : null,
+      ttsCostUsd: +ms.reduce((n, m) => n + (m.ttsCostUsd || 0), 0).toFixed(4),
+    } : {}),
+    perCall: ms.map(m => ({
+      key: m.key, outcome: m.outcome, lines: m.lines, flags: m.flags.length, judge: m.judge ? `${m.judge.outcome}, ${m.judge.violations.length} violation(s)` : null,
+      repeats: m.repeats, over25: m.over25, medianDelayMs: median(m.delays), premature: m.premature, noReply: m.noReply, costUsd: +m.costUsd.toFixed(4), errors: m.errors,
+    })),
+  };
+}
 
-    const s = detectStage(transcripts, intel, hw);
-    factsFrom(intel, facts);
-    const t0 = Date.now();
-    const tip = await generateAITipStreaming({
-      conversationId: `sim-${key}`,
-      callStage: s.stage as any,
-      recentTranscript: transcripts.slice(-8).map(t => `${t.speaker.toUpperCase()}: "${t.text}"`).join('\n'),
-      conversationSummary: intel?.summary,
-      transcriptCount: transcripts.length,
-      previousSuggestions: prevSuggestions.slice(-10),
-      conversationFacts: Array.from(facts),
-      collectedInfo: { customerName: s.hasName, businessName: s.business, phoneNumber: s.hasPhone, email: s.hasEmail },
-    }, async () => {});
-    const raw = tip.suggestion.trim().replace(/^"|"$/g, '');
-    prevSuggestions.push(raw);
-    // Canned fallbacks (getFallbackSuggestion) and the OpenAI fallback report no output tokens;
-    // a real Claude answer always does. Matching on text would misfire: a canned line is also a valid Ask Callback.
-    if (tip.tokenMetrics.output === 0) { flags.push(`turn ${i + 1}: FALLBACK: tip timed out or failed, canned line shown (${Date.now() - t0}ms)`); emit(red('   ⚠ FALLBACK: canned line (timeout/failure)')); }
-    for (const f of check(raw, transcripts)) { flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
-    const spoken = raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
-    transcripts.push({ speaker: 'agent', text: spoken });
-    emit(magenta('AGENT  ') + spoken + dim(`   [${s.stage} → ${tip.heading} · ${Date.now() - t0}ms]`));
-
-    // Intelligence refreshes in the background in prod — lands for the NEXT turn.
-    // Pass a copy: the intelligence client reverses the array in place.
-    intel = await generateConversationIntelligence({ conversationId: `sim-${key}`, transcripts: transcripts.map(t => ({ ...t })) }).catch(() => intel);
-  }
-  emit(flags.length ? red(`FLAGS (${flags.length}):\n  ${flags.join('\n  ')}`) : green('FLAGS: none'));
-  emit(dim(`ended: ${outcome}, ${transcripts.length} lines`));
-  let verdict: Verdict | undefined;
-  if (JUDGE) {
-    verdict = await judge(lead, persona, transcripts);
-    emit((verdict.violations.length ? red : green)(`JUDGE: ${verdict.outcome} · ${verdict.violations.length} violation(s)`));
-    for (const x of verdict.violations) emit(red(`  ✗ ${x}`));
-    for (const x of verdict.notes) emit(yellow(`  · ${x}`));
-  }
-  if (!LIVE) say(buf.join('\n'));
-  return { key, flags, verdict };
+async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(n, items.length)) }, async () => {
+    while (next < items.length) { const i = next++; out[i] = await fn(items[i]); }
+  }));
+  return out;
 }
 
 (async () => {
@@ -351,17 +585,46 @@ async function runPersona(key: string, persona: string, lead: Anthropic) {
   }
   if (!runs.length) runs.push(...Object.entries(PERSONAS));
 
+  const realtime = ENGINES.includes('realtime');
+  if (realtime) gatewayKey(); // fail fast without the key
+  const creditsBefore = realtime ? await gatewayCredits() : null;
+  mkdirSync(OUT_DIR, { recursive: true });
+  say(dim(`engine: ${ENGINE} · run: ${RUN_ID}\nout: ${OUT_DIR}${creditsBefore ? `\ngateway total_used before: $${creditsBefore.totalUsed.toFixed(4)}` : ''}`));
+
   // The Lambda modules log heavily; keep the transcript readable unless --verbose.
   if (!VERBOSE) { console.log = () => {}; console.info = () => {}; console.warn = () => {}; }
 
   const lead = new Anthropic({ apiKey: await getSecret('ANTHROPIC_API_KEY') });
-  const results = [];
-  if (LIVE) for (const [k, p] of runs) results.push(await runPersona(k, p, lead));
-  else results.push(...(await Promise.all(runs.map(([k, p]) => runPersona(k, p, lead)))));
+  // Persona-major, so with --parallel both engines of a persona run side by side.
+  const jobs = runs.flatMap(([k, p]) => ENGINES.map(e => [k, p, e] as const));
+  const runOne = ([k, p, e]: readonly [string, string, Engine]) =>
+    e === 'realtime' ? runRealtime(k, p, lead, creditsBefore?.totalUsed ?? null) : runStandard(k, p, lead);
+  const results: CallResult[] = LIVE
+    ? await pool(jobs, 1, runOne)
+    : await pool(jobs, PARALLEL, runOne);
+
+  const creditsAfter = realtime ? await gatewayCredits() : null;
+  const summary = {
+    runId: RUN_ID, engine: ENGINE, seed: SEED, judge: JUDGE, leadModel: LEAD_MODEL, judgeModel: JUDGE ? JUDGE_MODEL : null,
+    personas: runs.map(([k]) => k),
+    gatewayCredits: realtime ? {
+      totalUsedBefore: creditsBefore?.totalUsed ?? null, totalUsedAfter: creditsAfter?.totalUsed ?? null,
+      delta: creditsBefore && creditsAfter ? +(creditsAfter.totalUsed - creditsBefore.totalUsed).toFixed(4) : null,
+      note: 'team-wide total_used; other usage in the same window is included',
+    } : null,
+    engines: ENGINES.map(e => engineSummary(e, results)),
+  };
+  writeFileSync(join(OUT_DIR, 'summary.json'), JSON.stringify(summary, null, 2));
 
   say(bold('\n━━━━━━━━━━ SUMMARY ━━━━━━━━━━'));
   for (const r of results) {
     const j = r.verdict ? `  judge: ${r.verdict.outcome}, ${r.verdict.violations.length} violation(s)` : '';
-    say(`${r.flags.length || r.verdict?.violations.length ? red('FLAGGED') : green('clean  ')}  ${r.key}  (${r.flags.length})${j}`);
+    say(`${r.flags.length || r.verdict?.violations.length ? red('FLAGGED') : green('clean  ')}  ${r.key} · ${r.engine}  (${r.flags.length})${j}${r.errors.length ? red(`  errors: ${r.errors.length}`) : ''}`);
   }
+  for (const s of summary.engines) {
+    say(bold(`\n${s.engine}`) + `: ${s.lines} lines, ${s.scriptViolations.total} script flag(s), ${s.avgWordsPerLine} words/line, ${s.linesOver25Words} > 25 words, ${s.repeats} repeats, median delay ${s.medianReplyDelayMs ?? '-'}ms, premature ${s.prematureLines}, no-reply ${s.noReplyTurns}, $${s.costUsd} ($${s.costPerTalkMinute ?? '-'}/talk-min)`);
+    if (s.judge) say(`  judge: ${s.judge.pass} pass / ${s.judge.fail} fail, ${s.judge.violations} violation(s)`);
+  }
+  if (summary.gatewayCredits) say(dim(`\ngateway total_used: $${summary.gatewayCredits.totalUsedBefore} -> $${summary.gatewayCredits.totalUsedAfter} (Δ $${summary.gatewayCredits.delta})`));
+  say(dim(`saved: ${OUT_DIR}`));
 })().catch(e => { console.error(e); process.exit(1); });
