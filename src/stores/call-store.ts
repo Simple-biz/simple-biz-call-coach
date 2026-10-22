@@ -45,6 +45,9 @@ interface CallStore {
   // Loading state for tip generation (true from button click until tip arrives)
   isGeneratingTip: boolean;
 
+  // v3 live coach owns the suggested line; Get Next Suggestion is hidden while it does
+  realtimeLive: boolean;
+
   // Actions
   startCall: () => void;
   endCall: () => void;
@@ -133,6 +136,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
   // Streaming tip initial state
   streamingTip: null,
   isGeneratingTip: false,
+  realtimeLive: false,
 
   startCall: () => {
     const newState = {

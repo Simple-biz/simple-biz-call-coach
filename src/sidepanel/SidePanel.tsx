@@ -93,6 +93,14 @@ export default function SidePanel() {
       }
     });
 
+    // v3 live coach: the last finished line, put back when a draft is withdrawn
+    let lastFinalRealtimeLine: ScriptOption | null = null;
+    let realtimeActive = false;
+    // Until the live coach is known to be unavailable for this call, it owns the card.
+    let realtimeFailed = false;
+    const syncRealtimeLive = (status: string) =>
+      useCallStore.setState({ realtimeLive: !realtimeFailed || status === 'live' });
+
     // Listen for messages from background
     const handleMessage = (message: any) => {
       console.log("📨 [SidePanel] Received message:", message.type);
@@ -285,6 +293,39 @@ export default function SidePanel() {
           };
           useCallStore.getState().setCurrentScriptOptions([scriptOption]);
           console.log(`✅ [SidePanel] Updated GreetingsSelector with final suggestion: "${message.payload.heading}"`);
+          break;
+
+        case "REALTIME_STATUS":
+          // From the offscreen live coach. 'unavailable' / 'fallback' / 'error' hand the card
+          // back to Get Next Suggestion; a new attempt or a clean end of call clears that.
+          realtimeActive = message.status === 'live';
+          if (message.status === 'error' || message.detail === 'fallback' || message.detail === 'unavailable') realtimeFailed = true;
+          else if (message.status === 'connecting' || message.status === 'live' || message.detail === 'call ended') realtimeFailed = false;
+          syncRealtimeLive(message.status);
+          console.log(`🎙️ [SidePanel] Live coach: ${message.status}${message.detail ? ` (${message.detail})` : ''}`);
+          break;
+
+        case "REALTIME_TIP":
+          if (!message.text || !realtimeActive) break;
+          {
+            // Drafts stream word by word under one id; a finished line gets its own.
+            const option: ScriptOption = {
+              id: message.final ? `realtime-${Date.now()}` : 'realtime-live',
+              type: 'suggestion',
+              label: 'Live coach',
+              script: message.text,
+              icon: 'zap',
+            };
+            if (message.final) lastFinalRealtimeLine = option;
+            useCallStore.getState().setCurrentScriptOptions([option]);
+          }
+          break;
+
+        case "REALTIME_TIP_DROPPED":
+          // A draft withdrawn because the lead kept talking: put the last finished line back.
+          if (useCallStore.getState().currentScriptOptions?.[0]?.id === 'realtime-live') {
+            useCallStore.getState().setCurrentScriptOptions(lastFinalRealtimeLine ? [lastFinalRealtimeLine] : []);
+          }
           break;
 
         case "AI_COACHING_TIP":

@@ -21,7 +21,7 @@ const INITIAL_GREETINGS: ScriptOption[] = [
 ]
 
 export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSelectorProps) {
-  const { currentScriptOptions, streamingTip } = useCallStore()
+  const { currentScriptOptions, streamingTip, realtimeLive } = useCallStore()
   const isStreaming = !!streamingTip
 
   // Use the single option if available, otherwise fallback to first initial greeting
@@ -103,7 +103,13 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
             </div>
           </div>
 
-          {!isLoading && (
+          {realtimeLive && (
+            <p className="mt-2 text-center text-[9px] text-[#757575] font-medium italic">
+              Live coach is on: the next line appears as the lead talks.
+            </p>
+          )}
+
+          {!isLoading && !realtimeLive && (
             <div className="mt-2 text-center">
               <button
                 onClick={handleNext}

@@ -25,6 +25,9 @@ console.log('🚀 [Background] Service worker started')
 // Import AWS WebSocket service for real-time coaching
 // Import AI Backend Service (Legacy Socket.io for Elastic Beanstalk fallback)
 import { awsWebSocketService } from '@/services/aws-websocket.service'
+
+// v3 live coach: latest running cost of this call's session, reported once when it stops.
+let realtimeUsage: { seconds: number; costUsd: number } | null = null
 import { saveTranscript, pruneOldTranscripts, type HistoryTip } from '@/utils/history-store'
 
 // ============================================================================
@@ -923,6 +926,36 @@ async function processMessage(message: any, sender: any) {
     // ========================================================================
     // AUDIO LEVEL
     // ========================================================================
+
+    // ========================================================================
+    // v3 LIVE COACH (offscreen/realtime-auto.ts)
+    // ========================================================================
+
+    case 'GET_REALTIME_TOKEN':
+      // The offscreen live coach asks for a single-use session token; the backend mints it (agents
+      // on /call-coach/realtime-agents only), so the gateway key never ships in the extension.
+      try {
+        return await awsWebSocketService.requestRealtimeToken()
+      } catch (error: any) {
+        return { error: error?.message || String(error) }
+      }
+
+    case 'REALTIME_USAGE':
+      realtimeUsage = { seconds: Number(message.seconds) || 0, costUsd: Number(message.costUsd) || 0 }
+      return '__SKIP_RESPONSE__'
+
+    case 'REALTIME_STATUS':
+      if (message.status === 'off' && realtimeUsage) {
+        const usage = realtimeUsage
+        realtimeUsage = null
+        console.log(`🎙️ [Background] live coach call cost: $${usage.costUsd.toFixed(4)} over ${Math.round(usage.seconds)}s`)
+        void awsWebSocketService.reportRealtimeUsage(usage)
+      }
+      return '__SKIP_RESPONSE__'
+
+    case 'REALTIME_TIP':
+    case 'REALTIME_TIP_DROPPED':
+      return '__SKIP_RESPONSE__' // for the side panel
 
     case 'AUDIO_LEVEL_UPDATE':
       // Forward audio level updates to UI
