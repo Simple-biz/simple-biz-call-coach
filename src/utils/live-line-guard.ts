@@ -79,24 +79,29 @@ export function oneCallbackStatement(text: string): string {
  * decline line ("No problem. I appreciate you taking my call."), which tells a lead who just said yes
  * that the call is off. Once a line has confirmed the callback, the decline line becomes the sign-off.
  */
+export const MAX_CALLBACK_ASKS = 2
+
 export class LiveLineGuard {
   private confirmed = false
   private askedLastLine = false
+  private asks = 0
 
   apply(text: string, final: boolean): string | null {
     let line = guardLiveLine(text, final)
     if (line === null || !final) return line
     if (this.confirmed && line.trim() === DECLINE_LINE) line = SIGNOFF_LINE
-    // Kayser's test call, 2026-10-23: the callback question on 7 lines in 3 minutes. The top 22
-    // real bookings ask it 0.7 times per call and never more than twice. Never in two lines in a
-    // row: the second answer stands on its own.
+    // Kayser's test calls, 2026-10-23: the callback question on 7 lines in 3 minutes, then on 4
+    // lines in 2.5 minutes once it could no longer come twice in a row. Of 170 good booked calls in
+    // the 500 mined, 161 asked it once or not at all. Never in two lines in a row, never more than
+    // twice a call: past that the answer stands on its own.
     if (ANY_CALLBACK_ASK.test(line)) {
       const answerOnly = line.replace(ANY_CALLBACK_ASK_G, '').replace(/\s{2,}/g, ' ').trim()
-      if (this.askedLastLine && answerOnly) {
+      if ((this.askedLastLine || this.asks >= MAX_CALLBACK_ASKS) && answerOnly) {
         line = answerOnly
         this.askedLastLine = false
       } else {
         this.askedLastLine = true
+        this.asks++
       }
     } else {
       this.askedLastLine = false

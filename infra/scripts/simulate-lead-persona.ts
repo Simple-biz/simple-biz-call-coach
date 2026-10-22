@@ -88,6 +88,9 @@ const dim = c(2), bold = c(1), red = c(31), green = c(32), yellow = c(33), cyan 
 // Personas
 // ---------------------------------------------------------------------------
 const PERSONAS: Record<string, string> = {
+  // Kayser's second test call, 2026-10-23: the one where the coach asked for the callback 4 times.
+  'nephew-site':
+    "You are Dana, owner of a small business in Kentucky. Your nephew built your website. You ask, in this order and one at a time: whether this is a real person or a robot call, their name and company, what it costs (and push once for a ballpark: 'a few hundred or a few thousand?'), where they are located, and what the catch is with the free-after-90-days thing. You're slammed today. If they keep it short you say 'Maybe', then 'Today won't work. Tomorrow morning before ten is better.' You are the decision maker.",
   'busy-owner-has-site':
     "You are Mike, owner of Mike's Roofing. You have an old Wix site that gets no calls. You're on a job site and busy. You start short, but if they mention getting you found on Google you warm up and will accept a callback. You are the decision maker.",
   receptionist:
@@ -200,7 +203,7 @@ async function judge(client: Anthropic, persona: string, transcripts: Turn[]): P
   const r = await client.messages.create({
     model: JUDGE_MODEL,
     max_tokens: 1500,
-    system: `You audit cold calls. The AGENT reads lines suggested by an AI coach; judge the AGENT against this official script and its guidelines:\n\n${SCRIPT_DOC}\n\nThe agent's location (a city name) is the agent's own choice — not a violation. ${BOB_NUMBER} is Bob's real number, filled in by the agent for the script's "Bob's number is ____" — not invented. The company name "Simple.biz" is approved (Kayser, 2026-10-23) — not invented. After a yes, asking for the name, then who decides, then build-or-update is the approved close — not a violation. Unfilled placeholders like [Name] ARE a violation. Be strict but fair: only flag clear breaks of the script's rules, wrong facts, or lines that clearly hurt the call. Reply with ONLY JSON: {"outcome": "callback booked" | "declined" | "email only" | "no decision", "violations": ["turn N: ..."], "notes": ["minor observations"]}`,
+    system: `You audit cold calls. The AGENT reads lines suggested by an AI coach; judge the AGENT against this official script and its guidelines:\n\n${SCRIPT_DOC}\n\nThe agent's location (a city name) is the agent's own choice — not a violation. ${BOB_NUMBER} is Bob's real number, filled in by the agent for the script's "Bob's number is ____" — not invented. The company name "Simple.biz" is approved (Kayser, 2026-10-23) — not invented. After a yes, asking for the name, then who decides, then build-or-update is the approved close — not a violation. Pacing like the best agents is approved (Kayser, 2026-10-23): the callback question at most twice a call, so a rebuttal's answer without its closing callback question, an answer to a location, company, robot or what's-the-catch question that stops there, and a second price push answered with a different no-ballpark line are not violations. A lead naming when to call (\"tomorrow before ten\") counts as agreeing. Unfilled placeholders like [Name] ARE a violation. Be strict but fair: only flag clear breaks of the script's rules, wrong facts, or lines that clearly hurt the call. Reply with ONLY JSON: {"outcome": "callback booked" | "declined" | "email only" | "no decision", "violations": ["turn N: ..."], "notes": ["minor observations"]}`,
     messages: [{ role: 'user', content: `Lead persona (hidden from the agent): ${persona}\n\nCall:\n${call}` }],
   });
   const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('');

@@ -142,4 +142,22 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply('Would you mind if I have Bob or his partner reach out to you later today?', true))
       .toBe('Would you mind if I have Bob or his partner reach out to you later today?');
   });
+  // Kayser's second test call, 2026-10-23: four asks in 2.5 minutes, never two in a row.
+  it('asks at most twice in a call, keeping the answers', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    const lines = [
+      'Would you mind if I have Bob or his partner give you a call?',
+      "Yes, I'm a real person. I'm Bob's assistant.",
+      "It's Simple.biz.",
+      "That's great. We also help businesses improve and optimize their existing websites. Would you mind if I have Bob or his partner give you a call to talk about improving the look or ranking of your website?",
+      "Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing. Would you mind if I have them give you a call?",
+      "It's only free if we don't get you on Page 1 of Google and ChatGPT within 90 days. Would you mind if I have Bob or his partner give you a call to go over that?",
+      "No problem. I understand you're busy. Would you mind if I have Bob or his partner give you a call to talk about your website?",
+    ].map((l) => g.apply(l, true));
+    expect(lines.filter((l) => /would you mind/i.test(l ?? ''))).toHaveLength(2);
+    expect(lines[4]).toBe("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.");
+    expect(lines[5]).toBe("It's only free if we don't get you on Page 1 of Google and ChatGPT within 90 days.");
+    expect(lines[6]).toBe("No problem. I understand you're busy.");
+  });
 });

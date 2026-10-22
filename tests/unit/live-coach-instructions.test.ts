@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildInstructions, OPENER, REBUTTALS, DECLINE_LINE } from '@infra/lib/experiments/live-coach-instructions';
+import { buildInstructions, OPENER, REBUTTALS, DECLINE_LINE, PRICE_PUSHED_AGAIN } from '@infra/lib/experiments/live-coach-instructions';
 import { SCRIPT_DEFLECT, CALLBACK_ASK } from '@infra/lib/lambda/shared/script-guard';
 import { PRICING_REDIRECT } from '@infra/lib/lambda/shared/price-guard';
 
@@ -37,9 +37,12 @@ describe('live coach instructions', () => {
     expect(text).toContain(explainer);
   });
 
-  it('uses the guards\' own lines for deflect, pricing and the callback ask', () => {
+  // A second price push gets the best agents' line (2026-10-23 mining), not the guard's redirect
+  // again; the guard still swaps any line that quotes a price for its redirect.
+  it('uses the guards\' own lines for deflect and the callback ask, and the best agents\' second price answer', () => {
     expect(text).toContain(SCRIPT_DEFLECT);
-    expect(text).toContain(PRICING_REDIRECT);
+    expect(text).toContain(PRICE_PUSHED_AGAIN);
+    expect(text).not.toContain(PRICING_REDIRECT);
     expect(text).toContain(CALLBACK_ASK);
     expect(text).toContain(DECLINE_LINE);
   });
