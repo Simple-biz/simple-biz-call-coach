@@ -18,7 +18,7 @@
  */
 import { logger } from '@/utils/logger'
 import { LiveCoach, type SessionToken } from '@/services/realtime-coach'
-import { guardLiveLine } from '@/utils/live-line-guard'
+import { LiveLineGuard } from '@/utils/live-line-guard'
 
 let coach: LiveCoach | null = null
 // armed: the call started, waiting for the lead's first words. starting: waiting on the token.
@@ -103,13 +103,14 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
   if (mine !== generation) return // the call ended meanwhile; stop already reset the state
   starting = armed = false
   let firstUsed = false
+  const guard = new LiveLineGuard()
   const instance = new LiveCoach(
     (msg) => {
       switch (msg.type) {
         case 'LIVE_COACH_TIP': {
           // Streamed word by word. A draft abandoned because the lead kept talking is withdrawn
           // with REALTIME_TIP_DROPPED; the panel then puts the last finished line back.
-          const text = guardLiveLine(String(msg.text), !!msg.final)
+          const text = guard.apply(String(msg.text), !!msg.final)
           if (text !== null) send({ type: 'REALTIME_TIP', text, final: !!msg.final })
           break
         }

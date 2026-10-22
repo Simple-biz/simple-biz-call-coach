@@ -21,6 +21,9 @@ const UNSCRIPTED_CLAIMS: RegExp[] = [
   /\b(?:yes|yeah),? (?:we|bob) (?:can|does|do)\b/i,
   /\b(?:no|don't have a|do not have a|not a) (?:formal |real |official |fancy )?company name\b/i,
   /\bbob hansen'?s? (?:website|web design) (?:team|practice)\b/i,
+  // Live coach mass test 2026-10-23: "we have worked with roofing businesses before", "Bob does both, he fixes broken sites".
+  /\bwe(?:'ve| have)? (?:already )?worked with\b/i,
+  /\b(?:bob|he|we) (?:also |can )?(?:fix(?:es)?|repairs?|does both)\b/i,
 ];
 
 export function claimsUnscriptedFact(script: string): boolean {

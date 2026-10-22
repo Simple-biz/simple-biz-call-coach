@@ -42,7 +42,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
-import { guardLiveLine } from '../../src/utils/live-line-guard';
+import { LiveLineGuard } from '../../src/utils/live-line-guard';
 import { LiveSession, LIVE_MODEL, gatewayCredits, gatewayKey, tts } from './sim-live-coach';
 
 const LEAD_MODEL = process.env.LEAD_MODEL || 'claude-sonnet-5-5';
@@ -286,7 +286,11 @@ async function leadSay(lead: Anthropic, persona: string, history: LeadMsg[], att
   if (msgs.length === 0 || msgs[0].role === 'assistant') msgs.unshift({ role: 'user', content: '(phone rings, you pick up)' });
   const r = await lead.messages.create({ model: LEAD_MODEL, max_tokens: 400, system: leadSystem(persona), messages: msgs });
   const text = r.content.map(b => (b.type === 'text' ? b.text : '')).join('').trim();
-  return text || (attempt < 2 ? leadSay(lead, persona, history, attempt + 1) : '[HANGUP]');
+  // Mass test 2026-10-23: the lead model twice returned tool-call debris ("reasoning_effort: 10
+  // <invoke name=...>") instead of a line, and the coach answered the junk. Such a reply is retried.
+  const junk = /<\/?invoke\b|reasoning_effort|<\/?parameter\b/i.test(text);
+  if (text && !junk) return text;
+  return attempt < 2 ? leadSay(lead, persona, history, attempt + 1) : '[HANGUP]';
 }
 
 const fillPlaceholders = (raw: string) =>
@@ -425,6 +429,8 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
   const transcripts = r.transcripts;
   const leadView: LeadMsg[] = [];
   let session: LiveSession | null = null;
+  // One per call, as realtime-auto.ts keeps one per session.
+  const lineGuard = new LiveLineGuard();
 
   try {
     if (spendStart !== null) {
@@ -453,7 +459,7 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
       }
       const raw = reply.text.trim().replace(/^"|"$/g, '');
       // What the extension shows: the same guards realtime-auto.ts runs on every final live line.
-      const shown = guardLiveLine(raw, true) ?? raw;
+      const shown = lineGuard.apply(raw, true) ?? raw;
       log.coachRaw = raw; log.coachShown = shown; log.delayMs = reply.delayMs;
       for (const f of check(shown, transcripts)) { log.flags.push(f); r.flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
       if (shown !== raw) {

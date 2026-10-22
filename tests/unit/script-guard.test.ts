@@ -53,3 +53,14 @@ describe('fixWeakEnding', () => {
     expect(fixWeakEnding(s, 'conversion')).toBe(s);
   });
 });
+
+describe('claimsUnscriptedFact (live coach mass test 2026-10-23)', () => {
+  it.each([
+    'We have worked with roofing businesses before.',
+    "Bob does both: he helps with Google rankings and fixes broken sites.",
+  ])('flags: %s', (s) => expect(claimsUnscriptedFact(s)).toBe(true));
+  it.each([
+    'That\'s great. We also help businesses improve and optimize their existing websites.',
+    "Absolutely. I'll have Bob or his partner give you a call and go over some examples of websites we've built for businesses like yours.",
+  ])('passes the script: %s', (s) => expect(claimsUnscriptedFact(s)).toBe(false));
+});
