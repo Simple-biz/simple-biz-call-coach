@@ -103,7 +103,10 @@ export class LiveCoach {
           this.trace('unreadable frame')
         }
       }
-      ws.onerror = () => this.status('error', 'socket error')
+      // A browser fires `error` just before `close` on an abnormal drop (1006). Only onclose
+      // decides between reconnecting and giving up; an 'error' status here would end the session
+      // (realtime-auto falls back on it) before the reconnect could run.
+      ws.onerror = () => this.trace('socket error')
       ws.onclose = (e) => {
         this.trace(`socket closed ${e.code}${e.reason ? ` ${e.reason}` : ''}`)
         const wasStarted = this.started
@@ -198,9 +201,10 @@ export class LiveCoach {
         break
       }
       case 'error': {
+        // Traced, not fatal: a server error that ends the session arrives with a close, and
+        // onclose then reconnects or gives up.
         const msg = event.error?.message || event.message || JSON.stringify(event).slice(0, 160)
         this.trace(`error: ${msg}`)
-        this.status('error', msg)
         break
       }
     }
