@@ -7,6 +7,7 @@
 export const SCRIPT_DEFLECT = "Great question. I'm just Bob's assistant, so I don't want to give you the wrong answer. Would you mind if I have Bob or his partner give you a call to answer that for you?";
 
 export const CALLBACK_ASK = 'Would you mind if I have Bob or his partner give you a call?';
+export const THEM_ASK = 'Would you mind if I have them give you a call?';
 
 // Claims the script never makes: past work ("we've built a ton of sites in Topeka",
 // "a lot of shops we work with"), capabilities ("we can definitely set up online booking"),
@@ -41,5 +42,9 @@ export function fixWeakEnding(script: string, callStage: string): string {
   if (callStage === 'conversion' || callStage === 'signoff' || !WEAK_ENDING.test(script)) return script;
   const trimmed = script.replace(WEAK_ENDING, '').replace(/[\s,—-]+$/, '');
   if (/would you mind if i have bob or his partner/i.test(trimmed)) return /[.?!]$/.test(trimmed) ? trimmed : `${trimmed}?`;
-  return `${/[.?!]$/.test(trimmed) ? trimmed : `${trimmed}.`} ${CALLBACK_ASK}`;
+  // A line that already names Bob or his partner ends the way the script's own rebuttals do
+  // ("I'll have Bob or his partner give you a call... Would you mind if I have them give you a call?"),
+  // not with the full callback ask repeated.
+  const ask = /bob or his partner/i.test(trimmed) ? THEM_ASK : CALLBACK_ASK;
+  return `${/[.?!]$/.test(trimmed) ? trimmed : `${trimmed}.`} ${ask}`;
 }

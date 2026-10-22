@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { claimsUnscriptedFact, addHisPartner, fixWeakEnding, CALLBACK_ASK } from '@infra/lib/lambda/shared/script-guard';
+import { claimsUnscriptedFact, addHisPartner, fixWeakEnding, CALLBACK_ASK, THEM_ASK } from '@infra/lib/lambda/shared/script-guard';
 
 // Lines are taken from simulated calls (npm run sim) where the coach slipped.
 describe('claimsUnscriptedFact', () => {
@@ -36,8 +36,13 @@ describe('addHisPartner', () => {
 
 describe('fixWeakEnding', () => {
   it('replaces a weak close before agreement', () => {
-    expect(fixWeakEnding('Bob or his partner can tell you in five minutes whether it makes sense. Fair enough?', 'objection'))
-      .toBe(`Bob or his partner can tell you in five minutes whether it makes sense. ${CALLBACK_ASK}`);
+    expect(fixWeakEnding('It only takes five minutes to see whether it makes sense. Fair enough?', 'objection'))
+      .toBe(`It only takes five minutes to see whether it makes sense. ${CALLBACK_ASK}`);
+  });
+  // Found by the v3 regression snapshot: the full ask was repeated after a line that already offered the call.
+  it('does not repeat "Bob or his partner" when the line already names them', () => {
+    expect(fixWeakEnding("Great, I'll have Bob or his partner give you a call later today. Does that work?", 'closing'))
+      .toBe(`Great, I'll have Bob or his partner give you a call later today. ${THEM_ASK}`);
   });
   it('drops the weak close when the line already asks for the callback', () => {
     expect(fixWeakEnding('Would you mind if I have Bob or his partner give you a call — sound fair?', 'discovery'))
