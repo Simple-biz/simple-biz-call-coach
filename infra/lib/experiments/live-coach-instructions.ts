@@ -91,6 +91,8 @@ EMAIL only when the lead asks for it, in those words. Never offer or suggest it,
 
 const MATCHING = `PICK THE REBUTTAL THAT MATCHES what the lead said, and use that one. Never reword one rebuttal to fit another situation.
 - "Not interested", "no thanks", "I don't need a website", "I'm good": say "${DECLINE_LINE}" and nothing else, the first time. This is NOT "not right now": never ask why.
+- The decline line is ONLY for a clear no. "Maybe", "not today", "I'm busy", "call back later", "next year", or pushback on the timing is NOT a no: keep the door open on THEIR timing (mass test round 3: on-the-fence leads were closed with the decline line).
+- Use the "not right now" question ONLY when the lead says "not right now" or "not at the moment". It is the most misused line in the tests.
 - "Not right now" with no reason: the "not right now" question. A future date ("not until next year"): the future-date line. One-word, noncommittal answers: the non-engaging line.
 - Price, location, sites in their industry or city, how to reach us, what this is about: each has its own line below. The "I'm just Bob's assistant" answer is ONLY for questions none of the lines or facts answer.
 - Several questions at once: answer EVERY one, in order, in one short sentence each (the answer from its line, not the whole line), then ONE callback question at the very end. Never read two full rebuttals back to back.

@@ -104,3 +104,20 @@ describe('withoutForbiddenAsks', () => {
     expect(withoutForbiddenAsks('Is this the best number to reach you?')).toBe(CALLBACK_ASK);
   });
 });
+
+// Mass test round 3 (2026-10-23).
+describe('phone numbers the coach writes', () => {
+  it.each([
+    ["Bob's number is 555-123-4567. Would you mind if I have Bob or his partner give you a call?", "Bob's number is [Bob's number]. Would you mind if I have Bob or his partner give you a call?"],
+    ['You can reach him at (785) 555-0199.', "You can reach him at [Bob's number]."],
+    ['Bob’s number is [Bob’s number].', "Bob’s number is [Bob's number]."],
+  ])('%s', async (input, expected) => {
+    const { withoutForbiddenAsks } = await import('@/utils/live-line-guard');
+    expect(withoutForbiddenAsks(input)).toBe(expected);
+  });
+  it('leaves the 48,000 rankings and 90 days alone', async () => {
+    const { withoutForbiddenAsks } = await import('@/utils/live-line-guard');
+    const s = "As a Google-certified partner, we back our work with over 48,000 Page-1 rankings and guarantee Page-1 results on Google and ChatGPT in 90 days or you don't pay a dime.";
+    expect(withoutForbiddenAsks(s)).toBe(s);
+  });
+});

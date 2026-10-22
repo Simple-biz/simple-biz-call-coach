@@ -28,8 +28,15 @@ export function guardLiveLine(text: string, final: boolean): string | null {
 const PHONE_ASK = /\b(?:best|good|right|direct|cell)(?: phone)? number\b|\b(?:is|on|at) this (?:the best )?number\b|\bnumber (?:to|for) (?:reach|call)|\byour (?:phone )?number\b/i
 const EMAIL_ADDRESS = /\S+@\S+\.[a-z]{2,}/i
 
+// Mass test round 3: the coach twice made up Bob's number ("555-123-4567") instead of writing the
+// placeholder, and the lead wrote it down. Any phone number it writes becomes [Bob's number], which
+// the agent fills from their own screen. A curly apostrophe in the placeholder is straightened.
+const PHONE_DIGITS = /(?:\+?1[-.\s]?)?\(?\b\d{3}\)?[-.\s]?\d{3}[-.\s]\d{4}\b/g
+
 export function withoutForbiddenAsks(text: string): string {
   const fixed = text
+    .replace(PHONE_DIGITS, "[Bob's number]")
+    .replace(/\[Bob[’‘]s number\]/g, "[Bob's number]")
     .replace(/\[(?:the )?owner(?:'s name)?\]/gi, 'the owner')
     .replace(/,?\s*\[(?:their )?name\]/gi, '')
   const sentences = fixed.split(/(?<=[.!?])\s+/)

@@ -294,7 +294,7 @@ async function leadSay(lead: Anthropic, persona: string, history: LeadMsg[], att
 }
 
 const fillPlaceholders = (raw: string) =>
-  raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob'?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
+  raw.replace(/\[Agent\]/g, AGENT_NAME).replace(/\[Place\]/g, AGENT_PLACE).replace(/\[Bob['’]?s (phone |direct |cell )?(phone )?number\]/gi, BOB_NUMBER);
 
 type TurnLog = {
   turn: number; lead: string;
