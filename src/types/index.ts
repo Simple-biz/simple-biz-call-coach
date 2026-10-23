@@ -70,11 +70,6 @@ export interface Settings {
   // and a bigger script line.
   compactMode: boolean; // panel stripped down to the suggested line + the lead's last answer
   scriptTextSize: ScriptTextSize; // font size of the suggested line
-  // What the coach's placeholders stand for ([Agent], [Place], [Bob's number]), filled into the
-  // suggested line so agents don't swap them in their heads mid-sentence.
-  agentName: string;
-  agentPlace: string;
-  bobNumber: string;
 }
 
 export type ScriptTextSize = "md" | "lg" | "xl";

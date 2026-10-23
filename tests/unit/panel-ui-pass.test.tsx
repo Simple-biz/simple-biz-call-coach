@@ -1,7 +1,7 @@
 /**
- * Kayser's UI pass, 2026-10-23: placeholders filled from the agent's call details, the line a new one
- * replaced kept faded under it, a close checklist, no empty thread box, no "Mk1 v1", and the closing
- * question in bold.
+ * Kayser's UI pass, 2026-10-23: placeholders marked, the line a new one replaced kept faded under it,
+ * a close checklist, no empty thread box, no "Mk1 v1", and the closing question in bold. (The call
+ * details box that filled the placeholders was removed at his request the same day.)
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
@@ -19,26 +19,24 @@ const t = (speaker: Transcription['speaker'], text: string, isFinal = true): Tra
 })
 const line = (id: string, script: string) => ({ id, type: 'suggestion', label: 'Live coach', script, icon: 'zap' } as any)
 const base = { callState: 'active' as const, isLoadingScripts: false, onSelectScript: () => {} }
-const NONE = { agentName: '', agentPlace: '', bobNumber: '' }
 
 beforeEach(() => {
-  useSettingsStore.setState({ scriptTextSize: 'lg', compactMode: false, ...NONE })
+  useSettingsStore.setState({ scriptTextSize: 'lg', compactMode: false })
   useCallStore.setState({ currentScriptOptions: [], previousScriptLine: null, transcriptions: [], streamingTip: null as any })
 })
 
 describe('lineSegments', () => {
-  it('fills the placeholders the agent has set and marks the rest', () => {
-    const segs = lineSegments("My name is [Agent]. Bob is in [Place]. Bob’s number is [Bob’s number].", { ...NONE, agentName: 'Jen' })
-    expect(segs.filter((s) => s.kind === 'filled').map((s) => s.text)).toEqual(['Jen'])
-    expect(segs.filter((s) => s.kind === 'missing').map((s) => s.text)).toEqual(['your city', "Bob's number"])
+  it('marks the placeholders with plain labels', () => {
+    const segs = lineSegments("My name is [Agent]. Bob is in [Place]. Bob’s number is [Bob’s number].")
+    expect(segs.filter((s) => s.kind === 'placeholder').map((s) => s.text)).toEqual(['your name', 'your city', "Bob's number"])
   })
   it('flags only the closing question', () => {
-    const segs = lineSegments("It's Simple.biz. Would they talk to Dr. Patel about the website?", NONE)
+    const segs = lineSegments("It's Simple.biz. Would they talk to Dr. Patel about the website?")
     expect(segs.filter((s) => s.question).map((s) => s.text).join('')).toBe('Would they talk to Dr. Patel about the website?')
-    expect(lineSegments('Perfect, I have everything I need.', NONE).some((s) => s.question)).toBe(false)
+    expect(lineSegments('Perfect, I have everything I need.').some((s) => s.question)).toBe(false)
   })
-  it("leaves one only the agent can fill ([their date]) marked", () => {
-    expect(lineSegments('Until [their date], then.', NONE).find((s) => s.kind === 'missing')?.text).toBe('their date')
+  it("marks one only the agent can fill on the spot ([their date])", () => {
+    expect(lineSegments('Until [their date], then.').find((s) => s.kind === 'placeholder')?.text).toBe('their date')
   })
 })
 
@@ -78,24 +76,23 @@ describe('previous line', () => {
 })
 
 describe('the card', () => {
-  it('fills the line, shows the line before it, and drops "Mk1 v1"', () => {
-    useSettingsStore.setState({ agentName: 'Jen', agentPlace: 'Topeka', bobNumber: '785-555-0100' })
+  it('marks the placeholders, shows the line before it, and drops "Mk1 v1"', () => {
     useCallStore.setState({
       currentScriptOptions: [line('realtime-2', 'My name is [Agent]. Bob Hansen and I are local website designers here in [Place].')],
       previousScriptLine: 'Hi Dana, how are you doing today?',
       transcriptions: [t('customer', 'Doing alright.')],
     })
     render(<ChatThread {...base} transcriptions={useCallStore.getState().transcriptions} />)
-    expect(screen.getByText('Jen')).toBeTruthy()
-    expect(screen.getByText('Topeka')).toBeTruthy()
+    expect(screen.getByText('your name')).toBeTruthy()
+    expect(screen.getByText('your city')).toBeTruthy()
     expect(screen.getByText('Before')).toBeTruthy()
     expect(screen.getByText('Hi Dana, how are you doing today?')).toBeTruthy()
     expect(screen.queryByText('Mk1 v1')).toBeNull()
     expect(screen.getByLabelText('Close checklist')).toBeTruthy()
   })
-  it('asks for the call details while any is missing', () => {
+  it('has no call details box, and no checklist before anyone speaks', () => {
     render(<ChatThread {...base} transcriptions={[]} />)
-    expect(screen.getByText(/Your call details: filled into your lines/)).toBeTruthy()
+    expect(screen.queryByText(/call details/i)).toBeNull()
     expect(screen.queryByLabelText('Close checklist')).toBeNull()
   })
   it('shows the empty thread as one line, not a tall box', () => {

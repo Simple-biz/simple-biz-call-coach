@@ -4,7 +4,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { useSettingsStore } from '@/stores/settings-store'
 import { OPENING_GREETING } from '../../infra/lib/experiments/live-coach-instructions'
 import { LineText } from './LineText'
-import { CallDetails } from './CallDetails'
 import { CloseChecklist } from './CloseChecklist'
 import type { ScriptOption, ScriptTextSize } from '@/types'
 import { logger } from '@/utils/logger'
@@ -92,8 +91,6 @@ export function GreetingsSelector({ isLoading = false, onSelect }: GreetingsSele
           </div>
         )}
       </div>
-
-      <CallDetails />
 
       <div className="relative group">
         <div className="absolute -inset-0.5 bg-gradient-to-r from-[#1B1F6B] to-[#1B1F6B] rounded-lg blur opacity-10 group-hover:opacity-20 transition duration-500"></div>
