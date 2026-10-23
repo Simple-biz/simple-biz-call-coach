@@ -18,7 +18,7 @@
  */
 import { logger } from '@/utils/logger'
 import { LiveCoach, type SessionToken } from '@/services/realtime-coach'
-import { LiveLineGuard, futureDateInsteadOfDecline } from '@/utils/live-line-guard'
+import { LiveLineGuard } from '@/utils/live-line-guard'
 import { DECLINE_LINE } from '../../infra/lib/experiments/live-coach-instructions'
 import { LineGate } from '@/utils/line-gate'
 
@@ -169,7 +169,7 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
           if (msg.final && text.trim() === DECLINE_LINE && !leadTurnText) {
             const waitFrom = Date.now()
             const poll = () => {
-              if (leadTurnText || Date.now() - waitFrom >= LEAD_TEXT_WAIT_MS) deliver(futureDateInsteadOfDecline(text, leadTurnText), true)
+              if (leadTurnText || Date.now() - waitFrom >= LEAD_TEXT_WAIT_MS) deliver(guard.futureDate(text, leadTurnText), true)
               else setTimeout(poll, 50)
             }
             poll()
@@ -178,7 +178,7 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
           // A draft on its way to the decline line isn't streamed: it may turn into the future-date
           // line, and an agent shouldn't start saying goodbye off a half-written line.
           if (!msg.final && text.trim().length >= 10 && DECLINE_LINE.startsWith(text.trim())) break
-          deliver(msg.final ? futureDateInsteadOfDecline(text, leadTurnText) : text, !!msg.final)
+          deliver(msg.final ? guard.futureDate(text, leadTurnText) : text, !!msg.final)
           break
         }
         case 'LIVE_COACH_LEAD':

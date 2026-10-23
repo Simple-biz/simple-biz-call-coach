@@ -145,6 +145,14 @@ export class LiveLineGuard {
     // 2026-10-23); the coach said it 5-6 times. Past the second, it's just "Bob".
     // After endOnAQuestion, so a callback ask it adds counts too.
     line = this.endOnAQuestion(line)
+    // One goodbye a call (verify runs M and N: said again after the lead's own goodbye). null: the
+    // line on screen stays.
+    if (this.pastHello && GOODBYE.test(line) && !/\?\s*$/.test(line)) {
+      if (this.signedOff) return null
+      this.signedOff = true
+    } else {
+      this.signedOff = false // the call went on: a later goodbye is a new one
+    }
     return line.replace(/\bBob or (?:his|one of his) partners?\b/gi, (m) => (++this.bobOrPartner > MAX_BOB_OR_PARTNER ? 'Bob' : m))
   }
 
@@ -169,7 +177,7 @@ export class LiveLineGuard {
   private endOnAQuestion(line: string): string {
     line = this.skipAskedCloseQuestion(line).replace(/\s*(?:Does that help|Fair enough)\?\s*$/i, '')
     if (line.includes(DECISION_PIVOT) || /someone else in charge|\bthe owner\b|who should bob/i.test(line)) this.askedWho = true
-    if (line.includes(PURPOSE_PIVOT) || line.includes(CLOSE_PURPOSE) || /glad I called/i.test(line)) this.askedPurpose = true
+    if (line.includes(PURPOSE_PIVOT) || line.includes(CLOSE_PURPOSE) || /glad I called/i.test(line) || (PURPOSE_ASKED.test(line) && !/Bob Hansen and I/.test(line))) this.askedPurpose = true
     const t = line.trim()
     const check = this.lastCheck
     this.lastCheck = ''
@@ -219,6 +227,10 @@ export class LiveLineGuard {
 
   /** The close asks who decides, then build or update; a question the call already had is skipped. */
   private skipAskedCloseQuestion(line: string): string {
+    // Verify runs M and N, 2026-10-24: after the lead answered the close ("Sure, that's fine"), the
+    // coach asked build-or-update, the name, or the close again. Answered, the call is done: the
+    // goodbye.
+    if (this.closeAnswered && !GOODBYE.test(line)) return SIGNOFF_LINE
     // Sim 2026-10-23: "Sure, I'll have Bob call you tomorrow morning before ten." then a last line
     // of "...will give you a call later today." The time the lead agreed is kept, and the close's
     // last line reads it back (the judge kept noting it was never said back) and asks if it works.
@@ -241,11 +253,16 @@ export class LiveLineGuard {
       return this.askedWho && this.askedPurpose ? this.done() : this.nextCloseStep()
     }
     if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.confirmed || !this.blockClose() ? this.done() : CALLBACK_ASK
+    // The model's own version of the close ("I'll have Bob give you a call later today. Would that
+    // work for you?") is the close too, once there's a yes: its answer ends the call the same way
+    // (verify run N, receptionist).
+    if (this.confirmed && !this.doneSaid && /\b(?:give you a call|call you)\b[^?]*\bwould that work\b/i.test(line)) this.doneSaid = true
     // The close's who-decides question, in any wording, and the one the email and receptionist
     // lines end with ("...or is there someone else in charge of that?"); and the name question
     // (sim 2026-10-23: asked three times, "like I told you earlier"). Once the call has asked one,
     // that sentence goes; a line that was only that moves on to the close's next step.
-    for (const [asked, question] of [[this.askedWho, /someone else in charge/i], [this.askedName, /first name/i]] as const) {
+    // (And the email once the lead gave one: verify run M, asked three times.)
+    for (const [asked, question] of [[this.askedWho, /someone else in charge/i], [this.askedName, /first name/i], [this.emailGiven, /\bemail address\b/i]] as const) {
       if (!asked || !question.test(line)) continue
       const kept = sentences(line).filter((s) => !question.test(s)).join(' ').trim()
       // Before a yes there's no close to move on to (verify run: after a "Maybe." the who-decides
@@ -301,6 +318,25 @@ export class LiveLineGuard {
   private leadTime = ''
   private closeBlocked = false
   private closeAnswered = false
+  private emailGiven = false
+  private signedOff = false
+
+  /**
+   * A callback ask added after apply(): futureDateInsteadOfDecline swaps the decline line for the
+   * future-date line, which asks. Verify run N: uncounted, the lead's "I suppose that's fine" to it
+   * wasn't taken as a yes and the callback was asked again.
+   */
+  noteAsked(): void {
+    this.asks++
+    this.askedLastLine = true
+  }
+
+  /** futureDateInsteadOfDecline, counting the future-date line's ask when it swaps one in. */
+  futureDate(line: string, leadText: string): string {
+    const out = futureDateInsteadOfDecline(line, leadText)
+    if (out !== line) this.noteAsked()
+    return out
+  }
 
   /**
    * What the lead just said (the session's own transcript). A time they name is kept for the close.
@@ -312,6 +348,12 @@ export class LiveLineGuard {
     const m = LEAD_TIME.exec(text)
     if (m) this.leadTime = m[0].toLowerCase().replace(/^until (?:about )?/, 'before ').replace(/^by about /, 'by ')
     const newTime = !!m && this.whenText() !== before
+    // What the lead has already given, so the coach doesn't ask for it again (verify runs M and N:
+    // the name asked after "this is Dana", the email three times, build-or-update twice).
+    if (LEAD_NAME.test(text)) this.askedName = true
+    if (LEAD_EMAIL.test(text)) this.emailGiven = true
+    if (LEAD_PURPOSE.test(text)) this.askedPurpose = true
+    if (LEAD_DECIDES.test(text)) this.askedWho = true
     const yes = !LEAD_NO.test(text) && (LEAD_YES.test(text) || (!!m && !text.trim().endsWith('?')))
     if (this.doneSaid) {
       // "Yep, that works" answers the close; "I'm free around 2:30" changes it (confirm it again).
@@ -321,6 +363,15 @@ export class LiveLineGuard {
     if (yes && this.asks > 0) this.confirmed = true
   }
 }
+
+// What a lead has already given: their name ("this is Dana", "It's Luis"), an email, build or
+// update, who decides. Names are matched capitalised, so "I'm good" isn't a name.
+const LEAD_NAME = /\b(?:[Tt]his is|[Ii]t's|I'm|[Mm]y name is|[Nn]ame's)\s+(?!Bob\b)[A-Z][a-z]+\b/
+const LEAD_EMAIL = /@|\bat\b[^.?!]{1,40}\bdot (?:com|net|org|biz|us)\b/i
+const LEAD_PURPOSE = /\b(?:updat\w*|redo(?:ing)?|refresh\w*|new (?:site|website|one)|build(?:ing)? (?:one|a new|a site|a website)|don't have (?:a|one|a website))\b/i
+const LEAD_DECIDES = /\b(?:I'm the owner|I own|I handle|I make (?:the|those|all the) (?:decisions?|calls?)|that's me|it's me|it'd be me|I'm the one|(?:he|she|they) (?:handles?|decides?)|(?:Dr\.|Mr\.|Mrs\.|Ms\.) [A-Z][a-z]+ (?:handles|decides|is in charge))\b/i
+// The coach asking build or update in its own words ("Is this for updating your current site?").
+const PURPOSE_ASKED = /\b(?:build(?:ing)?|new (?:site|website))\b[^?]*\b(?:or|vs\.?)\b[^?]*\bupdat\w*[^?]*\?|\bupdat\w*\b[^?]*\b(?:or|vs\.?)\b[^?]*\b(?:build(?:ing)?|new (?:site|website))\b[^?]*\?/i
 
 // The lead agreeing, in their words; and a clear no that outweighs it.
 const LEAD_YES = /\b(?:yes|yeah|yep|yup|sure|of course|go ahead|that works|works for me|that's fine|that'd be fine|that is fine|sounds good|please do|have (?:him|bob|them) call|(?:he's|bob's|they're) welcome to call|feel free|that's okay|it's okay)\b/i

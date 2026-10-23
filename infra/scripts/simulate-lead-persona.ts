@@ -42,7 +42,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
-import { LiveLineGuard, futureDateInsteadOfDecline } from '../../src/utils/live-line-guard';
+import { LiveLineGuard } from '../../src/utils/live-line-guard';
 import { LineGate, type GateVerdict } from '../../src/utils/line-gate';
 import { LiveSession, LIVE_MODEL, gatewayCredits, gatewayKey, tts } from './sim-live-coach';
 
@@ -541,7 +541,14 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
       const raw = reply.text.trim().replace(/^"|"$/g, '');
       // What the extension shows: the same guards realtime-auto.ts runs on every final live line.
       lineGuard.noteLead(said);
-      const shown = futureDateInsteadOfDecline(lineGuard.apply(raw, true) ?? raw, said);
+      const guarded = lineGuard.apply(raw, true);
+      if (guarded === null) {
+        // The guard has nothing new to show (a second goodbye): the line on screen stays.
+        emit(dim(`   · guard kept the line on screen (raw: "${raw.slice(0, 60)}")`));
+        leadView.push({ role: 'user', content: '(Silence on the line. The person who called you says nothing.)' });
+        continue;
+      }
+      const shown = lineGuard.futureDate(guarded, said);
       log.coachRaw = raw; log.coachShown = shown; log.delayMs = reply.delayMs;
       for (const f of check(shown, transcripts)) { log.flags.push(f); r.flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
       if (shown !== raw) {

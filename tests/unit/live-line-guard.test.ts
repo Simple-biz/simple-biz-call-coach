@@ -380,4 +380,35 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply('Got it, Dr. Patel handles the website. Would you mind if I have Bob give Dr. Patel a call later today?', true))
       .not.toMatch(/give Dr\. Patel a call/);
   });
+  // Verify runs M and N, 2026-10-24.
+  it("doesn't ask again for what the lead already gave: name, email, build or update", async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.noteLead('Ruiz Landscaping, this is Dana.');
+    g.noteLead("It's luis@tacoluis.com, and it'd be an update.");
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    g.noteLead('Sure, tomorrow morning before ten.');
+    const out = g.apply("Great. What's the best email address for you? Can I have your first name, please?", true);
+    expect(out).not.toMatch(/email address|first name/i);
+    expect(g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true)).not.toMatch(/build a new website/);
+  });
+  it('a future-date line swapped in counts as the ask, so "I suppose that\'s fine" is the yes', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    const line = g.futureDate(g.apply('No problem. I appreciate you taking my call.', true)!, "We won't be ready until next year. Thanks for calling though.");
+    expect(line).toContain('LATER TODAY');
+    g.noteLead("Well, I suppose that's fine, as long as it's a short call.");
+    expect(g.apply('Got it. Would you mind if I have Bob or his partner give you a call later today?', true)).not.toMatch(/Would you mind/);
+  });
+  it("ends the call after the lead answered the model's own close, and says goodbye once", async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    g.noteLead("Sure, that's fine.");
+    g.apply("Thank you, I'll have Bob give you a call later today. Would that work for you?", true);
+    g.noteLead("Sure, that's fine, though I can't promise he'll be available.");
+    expect(g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true))
+      .toBe('Thanks so much. Have a beautiful day!');
+    expect(g.apply('Thanks so much. Have a beautiful day!', true)).toBeNull();
+  });
 });
