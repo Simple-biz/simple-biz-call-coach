@@ -39,8 +39,12 @@ export const CLOSE_DONE = "Perfect, I've got everything I need. Bob or his partn
 // ("...later today. Got it. Bob or his partner will give you a call later today."), so it no longer restates it.
 export const SIGNOFF_LINE = 'Thanks so much. Have a beautiful day!'
 
+// The opener as the month's top bookers say it, not the script's word for word (Kayser, 2026-10-23:
+// "the opening was like super long with the em dash"). Of their 186 real bookings: "I know you're
+// busy" in 13%, so it's gone; the em dashes are gone; "building or updating your website" (22%)
+// replaces "about an update" (14%). Every claim the script makes is kept.
 export const OPENER =
-  "Hi, my name is [Agent]. Bob Hansen and I are local website designers here in [Place]. I know you're busy, but we help businesses and contractors lock down Page-1 rankings on Google and ChatGPT—plus fully manage their Google Business Profile—within 90 days, or it's completely free. I wanted to see if it makes sense to connect with someone local about an update?"
+  "Hi, my name is [Agent]. Bob Hansen and I are local website designers here in [Place]. We help businesses and contractors lock down Page-1 rankings on Google and ChatGPT, plus fully manage their Google Business Profile, within 90 days, or it's completely free. I wanted to see if it makes sense to connect with someone local about building or updating your website?"
 
 // Verbatim from official-call-script.md. Placeholders are the agent's to fill.
 export const REBUTTALS: ReadonlyArray<readonly [when: string, say: string]> = [
