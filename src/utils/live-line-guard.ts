@@ -9,7 +9,7 @@
 import { mentionsPrice, PRICING_REDIRECT } from '../../infra/lib/lambda/shared/price-guard'
 import { claimsUnscriptedFact, addHisPartner, SCRIPT_DEFLECT, CALLBACK_ASK } from '../../infra/lib/lambda/shared/script-guard'
 import {
-  DECLINE_LINE, SIGNOFF_LINE, OPENER, CLOSE_NAME, CLOSE_DECISION_MAKER, CLOSE_PURPOSE, DECISION_PIVOT, PURPOSE_PIVOT,
+  DECLINE_LINE, SIGNOFF_LINE, OPENER, REBUTTALS, CLOSE_NAME, CLOSE_DECISION_MAKER, CLOSE_PURPOSE, DECISION_PIVOT, PURPOSE_PIVOT,
 } from '../../infra/lib/experiments/live-coach-instructions'
 
 /**
@@ -265,3 +265,23 @@ function sentences(text: string): string[] {
 const ANY_CALLBACK_ASK_SRC = String.raw`\s*(?:Would you mind|Would it be okay|Is it okay|Can I have)[^?]*(?:give (?:you|them|him|her|the owner)[^?]*call|reach out|call you)[^?]*\?`
 const ANY_CALLBACK_ASK = new RegExp(ANY_CALLBACK_ASK_SRC, 'i')
 const ANY_CALLBACK_ASK_G = new RegExp(ANY_CALLBACK_ASK_SRC, 'gi')
+
+// A lead pushing the website to later: "not until next year", "at some point", "after the holidays".
+const FUTURE_TIME = /\b(?:next (?:year|month|quarter|spring|summer|fall|winter|season)|in the new year|after the (?:holidays|new year|season|busy season)|(?:later|early|end of) (?:this|next) year|this (?:spring|summer|fall|winter)|until (?:next|the|after|january|february|march|april|may|june|july|august|september|october|november|december|spring|summer|fall|winter)|at some point|eventually|down the road)\b/i
+// The date itself, to fill [their date] with the lead's own words.
+const FUTURE_DATE = /\b(?:next (?:year|month|quarter|spring|summer|fall|winter|season)|the new year|after the (?:holidays|new year|season|busy season)|(?:later|early|the end of) (?:this|next) year|this (?:spring|summer|fall|winter)|january|february|march|april|may|june|july|august|september|october|november|december)\b/i
+const FUTURE_DATE_LINE = REBUTTALS.find(([when]) => when.startsWith('Mentions a future date'))![1]
+
+/**
+ * Simulated calls, 2026-10-23: a lead saying "we could use a better website, but we're not looking
+ * to do anything until next year. Thanks for calling though." got the decline line twice in one
+ * round (and in earlier rounds), dropping an interested decision maker. The instructions already say
+ * a future date is not a no; the model keeps slipping on the "thanks for calling". When the coach
+ * gives the decline line to a lead who named a later time, the script's future-date line goes
+ * instead, with their date filled in. A plain "no thanks, I don't need a website" keeps the decline.
+ */
+export function futureDateInsteadOfDecline(line: string, leadText: string): string {
+  if (line.trim() !== DECLINE_LINE || !FUTURE_TIME.test(leadText)) return line
+  const date = FUTURE_DATE.exec(leadText)?.[0]
+  return date ? FUTURE_DATE_LINE.replace('[their date]', date.toLowerCase()) : FUTURE_DATE_LINE
+}

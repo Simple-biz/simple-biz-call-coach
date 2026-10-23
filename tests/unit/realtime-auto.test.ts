@@ -406,4 +406,39 @@ describe('lines while the agent is reading', () => {
     await flush()
     expect(sentOf('REALTIME_TIP')).toHaveLength(0)
   })
+
+  // A decline right after the hello becomes the pitch (no goodbye before the pitch), so these calls
+  // are past the hello first.
+  const pastTheHello = async (ws: FakeWS) => {
+    await line(ws, "Yes, I'm a real person. I'm Bob's assistant. Are you the one who handles the website?")
+    sendMessage.mockClear()
+  }
+
+  // The lead's words can land after the reply: the decline line waits for them.
+  it('turns a decline into the future-date line when the lead named a later time', async () => {
+    vi.useFakeTimers()
+    const { ws } = await liveSession()
+    await pastTheHello(ws)
+    ws.event({ type: 'speech-started' })
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'No problem. I appreciate you taking my call.')
+    // Neither the draft (on its way to the decline line) nor the final line yet: waiting for the
+    // lead's words.
+    expect(sentOf('REALTIME_TIP')).toHaveLength(0)
+    ws.event({ type: 'input-transcription-completed', transcript: "We're not looking to do anything until next year. Thanks for calling though." })
+    vi.advanceTimersByTime(100)
+    await flush()
+    expect(sentOf('REALTIME_TIP').at(-1).text).toContain('until next year, but would it be okay if Bob or his partner reach out to you LATER TODAY')
+  })
+  it('still says the decline line to a plain no, without waiting forever', async () => {
+    vi.useFakeTimers()
+    const { ws } = await liveSession()
+    await pastTheHello(ws)
+    ws.event({ type: 'speech-started' })
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'No problem. I appreciate you taking my call.')
+    vi.advanceTimersByTime(1300) // no transcript came
+    await flush()
+    expect(sentOf('REALTIME_TIP').at(-1).text).toBe('No problem. I appreciate you taking my call.')
+  })
 })

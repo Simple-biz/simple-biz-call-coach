@@ -42,7 +42,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optimized';
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
-import { LiveLineGuard } from '../../src/utils/live-line-guard';
+import { LiveLineGuard, futureDateInsteadOfDecline } from '../../src/utils/live-line-guard';
 import { LineGate, type GateVerdict } from '../../src/utils/line-gate';
 import { LiveSession, LIVE_MODEL, gatewayCredits, gatewayKey, tts } from './sim-live-coach';
 
@@ -540,7 +540,7 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
       }
       const raw = reply.text.trim().replace(/^"|"$/g, '');
       // What the extension shows: the same guards realtime-auto.ts runs on every final live line.
-      const shown = lineGuard.apply(raw, true) ?? raw;
+      const shown = futureDateInsteadOfDecline(lineGuard.apply(raw, true) ?? raw, said);
       log.coachRaw = raw; log.coachShown = shown; log.delayMs = reply.delayMs;
       for (const f of check(shown, transcripts)) { log.flags.push(f); r.flags.push(`turn ${i + 1}: ${f}`); emit(red(`   ⚠ ${f}`)); }
       if (shown !== raw) {

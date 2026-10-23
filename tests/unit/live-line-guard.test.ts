@@ -251,4 +251,21 @@ describe('LiveLineGuard: callback question pacing', () => {
     g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
     expect(g.apply('Thanks so much. Have a beautiful day!', true)).toBe('Thanks so much. Have a beautiful day!');
   });
+  // Simulated calls: an interested lead pushing to "next year" got the decline line, twice in a round.
+  it.each([
+    ["Well, I'll be honest, we could use a better website, but we're not looking to do anything until next year. Thanks for calling though.", 'until next year'],
+    ['We want to redo it at some point, just not right now. Thanks.', 'until [their date]'],
+    ["Call me after the holidays, I'm swamped.", 'until after the holidays'],
+  ])('gives the future-date line, not the decline, to: %s', async (lead, expected) => {
+    const { futureDateInsteadOfDecline } = await import('@/utils/live-line-guard');
+    const out = futureDateInsteadOfDecline('No problem. I appreciate you taking my call.', lead);
+    expect(out).toContain(expected);
+    expect(out).toContain('LATER TODAY');
+  });
+  it('keeps the decline line for a plain no', async () => {
+    const { futureDateInsteadOfDecline } = await import('@/utils/live-line-guard');
+    for (const lead of ["No thanks, I don't need a website. Word of mouth keeps me busy.", 'Not interested. Take me off your list.']) {
+      expect(futureDateInsteadOfDecline('No problem. I appreciate you taking my call.', lead)).toBe('No problem. I appreciate you taking my call.');
+    }
+  });
 });

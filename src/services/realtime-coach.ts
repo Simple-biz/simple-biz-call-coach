@@ -194,7 +194,10 @@ export class LiveCoach {
         this.trace('session configured')
         break
       case 'input-transcription-completed':
-        if (event.transcript) this.remember('lead', event.transcript)
+        if (event.transcript) {
+          this.remember('lead', event.transcript)
+          this.emit({ type: 'LIVE_COACH_LEAD', text: String(event.transcript) })
+        }
         break
       case 'response-done': {
         const usage = event.raw?.response?.usage || event.raw?.usage

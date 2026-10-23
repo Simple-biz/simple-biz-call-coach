@@ -18,13 +18,17 @@
  */
 import { logger } from '@/utils/logger'
 import { LiveCoach, type SessionToken } from '@/services/realtime-coach'
-import { LiveLineGuard } from '@/utils/live-line-guard'
+import { LiveLineGuard, futureDateInsteadOfDecline } from '@/utils/live-line-guard'
+import { DECLINE_LINE } from '../../infra/lib/experiments/live-coach-instructions'
 import { LineGate } from '@/utils/line-gate'
 
 let coach: LiveCoach | null = null
 // When a new line may replace the one the agent is reading (line-gate.ts). One per call.
 let gate = new LineGate()
 let held: { text: string; final: boolean } | null = null
+// What the lead said this turn (the session's own transcript), for futureDateInsteadOfDecline.
+let leadTurnText = ''
+const LEAD_TEXT_WAIT_MS = 1200
 let releaseTimer: ReturnType<typeof setTimeout> | null = null
 
 /**
@@ -160,14 +164,26 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
           }
           const text = guard.apply(String(msg.text), !!msg.final)
           if (text === null) break
-          if (verdict === 'hold') {
-            held = { text, final: !!msg.final }
-            scheduleRelease()
+          // The decline line waits for the lead's words (they can land a few hundred ms after the
+          // reply): a lead who named a later time gets the future-date line instead.
+          if (msg.final && text.trim() === DECLINE_LINE && !leadTurnText) {
+            const waitFrom = Date.now()
+            const poll = () => {
+              if (leadTurnText || Date.now() - waitFrom >= LEAD_TEXT_WAIT_MS) deliver(futureDateInsteadOfDecline(text, leadTurnText), true)
+              else setTimeout(poll, 50)
+            }
+            poll()
             break
           }
-          send({ type: 'REALTIME_TIP', text, final: !!msg.final })
+          // A draft on its way to the decline line isn't streamed: it may turn into the future-date
+          // line, and an agent shouldn't start saying goodbye off a half-written line.
+          if (!msg.final && text.trim().length >= 10 && DECLINE_LINE.startsWith(text.trim())) break
+          deliver(msg.final ? futureDateInsteadOfDecline(text, leadTurnText) : text, !!msg.final)
           break
         }
+        case 'LIVE_COACH_LEAD':
+          leadTurnText = String(msg.text)
+          break
         case 'LIVE_COACH_TIP_DROPPED':
           held = null
           send({ type: 'REALTIME_TIP_DROPPED' })
@@ -175,6 +191,7 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
         case 'LIVE_COACH_SPEECH':
           if (msg.phase === 'started') {
             gate.leadStarted()
+            leadTurnText = ''
             // A reply still waiting for the agent to stop answered something earlier; the lead is
             // saying more now and the coach will answer that. (Simulated calls: a held reply to a
             // "mhm" popped up just as the lead began their real answer.)
@@ -208,6 +225,16 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
   coach = instance
   logger.log('🎙️ [LiveCoach] starting')
   await instance.start()
+}
+
+/** Shows a guarded line now, or holds it while the agent is reading (line-gate.ts). */
+function deliver(text: string, final: boolean): void {
+  if (gate.verdict() === 'hold') {
+    held = { text, final }
+    scheduleRelease()
+    return
+  }
+  send({ type: 'REALTIME_TIP', text, final })
 }
 
 function flushPreRoll(instance: LiveCoach): void {
@@ -247,6 +274,7 @@ export function stopRealtimeAuto(): void {
   preRollSamples = 0
   gate = new LineGate()
   held = null
+  leadTurnText = ''
   if (releaseTimer) clearTimeout(releaseTimer)
   releaseTimer = null
   if (!coach) return
