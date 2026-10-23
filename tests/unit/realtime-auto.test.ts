@@ -340,9 +340,29 @@ describe('lines while the agent is reading', () => {
     realtimeAgentSpoke()
     ws.event({ type: 'speech-stopped' })
     await line(ws, 'Would you mind if I have Bob or his partner give you a call?')
+    // The agent reads on through the "mhm": that's what makes it a backchannel.
+    for (let i = 0; i < 6; i++) { vi.advanceTimersByTime(400); realtimeAgentSpoke() }
     vi.advanceTimersByTime(5000)
     await flush()
     expect(sentOf('REALTIME_TIP')).toHaveLength(0)
+  })
+
+  // Kayser's test call: "Doing good, thanks" to his "Hi, how are you?" (his transcript lagging into
+  // it) was dropped as a backchannel, so the pitch never showed.
+  it('shows the reply to a quick answer once the agent has stopped, even with a lagging transcript', async () => {
+    vi.useFakeTimers()
+    const { ws, realtimeAgentSpoke } = await liveSession()
+    realtimeAgentSpoke() // "Hi, how are you?"
+    ws.event({ type: 'speech-started' }) // "Doing good, thanks."
+    vi.advanceTimersByTime(300)
+    realtimeAgentSpoke() // the agent's last words, transcribed late
+    vi.advanceTimersByTime(700)
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'My name is [Agent]. Real quick, Bob Hansen and I are local website designers here in [Place].')
+    vi.advanceTimersByTime(2000)
+    await flush()
+    expect(sentOf('REALTIME_TIP').at(-1)).toMatchObject({ final: true })
+    expect(sentOf('REALTIME_TIP').at(-1).text).toContain('Bob Hansen and I')
   })
 
   it('holds the reply to an interruption until the agent stops, then shows it', async () => {

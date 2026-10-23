@@ -2,6 +2,12 @@ import { describe, it, expect } from 'vitest'
 import { guardLiveLine } from '@/utils/live-line-guard'
 import { PRICING_REDIRECT } from '@infra/lib/lambda/shared/price-guard'
 import { SCRIPT_DEFLECT } from '@infra/lib/lambda/shared/script-guard'
+import { OPENER } from '@infra/lib/experiments/live-coach-instructions'
+import type { LiveLineGuard as Guard } from '@/utils/live-line-guard'
+
+// Past the opening: no goodbye can come before the pitch (Kayser's test call, 2026-10-23), so these
+// guards start with the pitch said. It ends on a question, so it adds and counts nothing else.
+const pitched = <G extends Guard>(g: G): G => { g.apply(OPENER, true); return g }
 
 describe('guardLiveLine', () => {
   it("passes the script's own 48,000 Page-1 rankings line unchanged", () => {
@@ -66,7 +72,7 @@ describe('LiveLineGuard', () => {
   it('turns the decline line into the sign-off once a callback was confirmed', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
     const { DECLINE_LINE, SIGNOFF_LINE } = await import('@infra/lib/experiments/live-coach-instructions');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     expect(g.apply(DECLINE_LINE, true)).toBe(DECLINE_LINE); // a real decline before any yes
     g.apply("Perfect. I'll have Bob or his partner reach out to you tomorrow morning.", true);
     expect(g.apply(DECLINE_LINE, true)).toBe(SIGNOFF_LINE);
@@ -74,7 +80,7 @@ describe('LiveLineGuard', () => {
   it('a callback question does not count as confirmed', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
     const { DECLINE_LINE } = await import('@infra/lib/experiments/live-coach-instructions');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply('Would you mind if I have Bob or his partner give you a call?', true);
     expect(g.apply(DECLINE_LINE, true)).toBe(DECLINE_LINE);
   });
@@ -126,7 +132,7 @@ describe('phone numbers the coach writes', () => {
 describe('LiveLineGuard: callback question pacing', () => {
   it('never asks the callback question in two lines in a row', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     expect(g.apply("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?", true))
       .toBe("It's Simple.biz. Would you mind if I have Bob or his partner give you a call?");
     expect(g.apply('Great question. Bob is in [Place]. Would you mind if I have Bob or his partner give you a call to talk about your website?', true))
@@ -137,7 +143,7 @@ describe('LiveLineGuard: callback question pacing', () => {
   });
   it('keeps a line that is only the callback question', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply('Would you mind if I have Bob or his partner give you a call?', true);
     expect(g.apply('Would you mind if I have Bob or his partner reach out to you later today?', true))
       .toBe('Would you mind if I have Bob or his partner reach out to you later today?');
@@ -145,7 +151,7 @@ describe('LiveLineGuard: callback question pacing', () => {
   // Kayser's second test call, 2026-10-23: four asks in 2.5 minutes, never two in a row.
   it('asks twice in a call, keeping the answers; later only when the lead is hedging', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     const lines = [
       'Would you mind if I have Bob or his partner give you a call?',
       "Yes, I'm a real person. I'm Bob's assistant.",
@@ -172,7 +178,7 @@ describe('LiveLineGuard: callback question pacing', () => {
   // The month's top bookers said "Bob or his partner" 0.66 times a call; the coach said it 5-6 times.
   it('says "Bob or his partner" twice a call at most, then "Bob"', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply('Would you mind if I have Bob or his partner give you a call?', true);
     g.apply("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.", true);
     expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today.", true))
@@ -181,7 +187,7 @@ describe('LiveLineGuard: callback question pacing', () => {
   // Sim 2026-10-23: the close asked who decides and build-or-update again after both were answered.
   it('skips close questions the call already asked', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     expect(g.apply("Yes, I'm a real person. I'm Bob's assistant.", true)).toMatch(/Are you the one who handles the website\?$/);
     expect(g.apply("It's Simple.biz.", true)).toMatch(/building a new website, or updating one\?$/);
     g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
@@ -189,7 +195,7 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
       .toBe("Perfect, I've got everything I need.");
     // The email line's own who-decides question isn't asked again either.
-    const g2 = new LiveLineGuard();
+    const g2 = pitched(new LiveLineGuard());
     g2.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
     expect(g2.apply("Absolutely. What's the best email address? Since I'm just his assistant, would they be calling to talk to you about the website, or is there someone else in charge of that?", true))
       .toBe("Absolutely. What's the best email address?");
@@ -201,12 +207,12 @@ describe('LiveLineGuard: callback question pacing', () => {
   // Sim 2026-10-23, the same run: three guard slips.
   it('adds no question to a goodbye in other words', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    expect(new LiveLineGuard().apply('Absolutely. No problem. I appreciate your time—thanks again.', true))
+    expect(pitched(new LiveLineGuard()).apply('Absolutely. No problem. I appreciate your time—thanks again.', true))
       .toBe('Absolutely. No problem. I appreciate your time—thanks again.');
   });
   it('does not cut a line at "Dr."', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
     // The whole who-decides sentence goes (not "Would they talk to Dr."), and the next question follows.
     expect(g.apply('Thanks. Would they talk to Dr. Patel about the website, or is there someone else in charge of that?', true))
@@ -214,7 +220,7 @@ describe('LiveLineGuard: callback question pacing', () => {
   });
   it('asks for their first name once', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply("Sure, I'll have Bob or his partner call you after three. Can I have your first name, please?", true);
     expect(g.apply('Can I have your first name, please?', true))
       .toBe('Would they talk to YOU about the website, or is there someone else in charge of that?');
@@ -222,9 +228,17 @@ describe('LiveLineGuard: callback question pacing', () => {
   // Kayser's third test call: the lead had to ask "You said you had one more question?".
   it('carries the close on after a flat confirmation', async () => {
     const { LiveLineGuard } = await import('@/utils/live-line-guard');
-    const g = new LiveLineGuard();
+    const g = pitched(new LiveLineGuard());
     g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
     expect(g.apply("Thanks, Dana. I'll have Bob call you tomorrow morning before ten.", true))
       .toBe("Thanks, Dana. I'll have Bob or his partner call you tomorrow morning before ten. Would they talk to YOU about the website, or is there someone else in charge of that?");
+  });
+  it('never says goodbye before the pitch', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    expect(g.apply("Hi Dana, how are you doing today?", true)).toBe("Hi Dana, how are you doing today?");
+    expect(g.apply('No problem. I appreciate you taking my call.', true)).toBe(OPENER);
+    // After the pitch, a real no gets the decline line.
+    expect(g.apply('No problem. I appreciate you taking my call.', true)).toBe('No problem. I appreciate you taking my call.');
   });
 });

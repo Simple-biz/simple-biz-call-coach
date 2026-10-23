@@ -27,14 +27,19 @@ let gate = new LineGate()
 let held: { text: string; final: boolean } | null = null
 let releaseTimer: ReturnType<typeof setTimeout> | null = null
 
-/** Shows the line held back while the agent was talking, once they stop. */
+/**
+ * Shows the line held back while the agent was talking, once they stop, unless by then it turned
+ * out the agent kept reading through a lead's "hmm" (the gate says drop).
+ */
 function scheduleRelease(): void {
   if (releaseTimer) clearTimeout(releaseTimer)
   releaseTimer = setTimeout(() => {
     releaseTimer = null
     if (!held) return
-    if (gate.agentTalking()) return scheduleRelease()
-    send({ type: 'REALTIME_TIP', text: held.text, final: held.final })
+    const verdict = gate.verdict()
+    if (verdict === 'hold') return scheduleRelease()
+    if (verdict === 'drop') logger.log(`🎙️ [LiveCoach] backchannel reply dropped: "${held.text.slice(0, 40)}"`)
+    else send({ type: 'REALTIME_TIP', text: held.text, final: held.final })
     held = null
   }, gate.msUntilQuiet() + 50)
 }

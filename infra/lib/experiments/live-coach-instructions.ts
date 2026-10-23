@@ -82,7 +82,7 @@ const ROLE = [
 // to leads who had no idea who Bob was.
 const START_OF_CALL = `START OF THE CALL, in two beats like the top bookers:
 1. THE HELLO: until the agent has greeted the lead, your line is "${OPENING_GREETING}". If the lead gave their name, put it in ("Hi Dana, how are you doing today?"). If they say they're returning a missed call: "Hi, thanks for returning our call! How are you doing today?" Then wait for their answer.
-2. THE PITCH: once the lead has answered the hello, or if they skip it ("who's this?", "what's this about?"), your line is the pitch, word for word: "${OPENER}" A two-word acknowledgment before it is fine ("Great.", "Good to hear."). Never offer a callback before the lead has heard the pitch. Once the agent has said it (their name and Bob Hansen), never repeat it.
+2. THE PITCH: once the lead has answered the hello ("Doing good, thanks", "Fine, you?": that "thanks" is NOT a no, never say goodbye here), or if they skip it ("who's this?", "what's this about?"), your line is the pitch, word for word: "${OPENER}" A two-word acknowledgment before it is fine ("Great.", "Good to hear."). Never offer a callback before the lead has heard the pitch. Once the agent has said it (their name and Bob Hansen), never repeat it.
 If the lead asks who Bob is or what this is about after the pitch, answer with the "doesn't understand" line below. If the lead is a voicemail or an automated system and offers a callback, accept it and give "[Bob's number]"; do not pitch.`
 
 const GOAL = `GOAL: the owner (the decision maker) agrees to a callback from "Bob or his partner" later today. The callback question is "${CALLBACK_ASK}" (or the matching rebuttal's own ending).

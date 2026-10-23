@@ -9,7 +9,7 @@
 import { mentionsPrice, PRICING_REDIRECT } from '../../infra/lib/lambda/shared/price-guard'
 import { claimsUnscriptedFact, addHisPartner, SCRIPT_DEFLECT, CALLBACK_ASK } from '../../infra/lib/lambda/shared/script-guard'
 import {
-  DECLINE_LINE, SIGNOFF_LINE, CLOSE_NAME, CLOSE_DECISION_MAKER, CLOSE_PURPOSE, DECISION_PIVOT, PURPOSE_PIVOT,
+  DECLINE_LINE, SIGNOFF_LINE, OPENER, CLOSE_NAME, CLOSE_DECISION_MAKER, CLOSE_PURPOSE, DECISION_PIVOT, PURPOSE_PIVOT,
 } from '../../infra/lib/experiments/live-coach-instructions'
 
 /**
@@ -86,6 +86,7 @@ export const MAX_BOB_OR_PARTNER = 2
 
 export class LiveLineGuard {
   private confirmed = false
+  private pitched = false
   private askedLastLine = false
   private asks = 0
   private bobOrPartner = 0
@@ -95,6 +96,11 @@ export class LiveLineGuard {
     if (line === null || !final) return line
     this.prevAsked = this.askedLastLine
     if (this.confirmed && line.trim() === DECLINE_LINE) line = SIGNOFF_LINE
+    // Kayser's test call, 2026-10-23: the lead answered the hello with "Doing good, thanks" and the
+    // coach said its goodbye; the call stalled before the pitch was ever given. No goodbye before
+    // the pitch: the line becomes the pitch.
+    if (!this.pitched && GOODBYE.test(line)) line = OPENER
+    if (line.includes('Bob Hansen and I')) this.pitched = true
     // Kayser's test calls, 2026-10-23: the callback question on 7 lines in 3 minutes, then on 4
     // lines in 2.5 minutes once it could no longer come twice in a row. Of 170 good booked calls in
     // the 500 mined, 161 asked it once or not at all. Never in two lines in a row, never more than
