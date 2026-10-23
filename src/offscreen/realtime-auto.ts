@@ -183,6 +183,7 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
         }
         case 'LIVE_COACH_LEAD':
           leadTurnText = String(msg.text)
+          guard.noteLead(leadTurnText)
           break
         case 'LIVE_COACH_TIP_DROPPED':
           held = null

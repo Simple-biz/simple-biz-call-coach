@@ -219,12 +219,16 @@ export class LiveLineGuard {
       this.timeConfirmed = true
       if (agreed[1].trim()) this.when = agreed[1].trim()
     }
-    if (line.includes(CLOSE_DONE_SHORT)) {
+    // Verify run, 2026-10-24: after "Would that work for you?" / "Yes, that works, thanks" the
+    // model said the whole close again in its own words ("I've got everything set... Would that
+    // work for you?"). Once the close is said and answered, a line restating it is the goodbye.
+    if (this.doneSaid && CLOSE_RESTATED.test(line)) return SIGNOFF_LINE
+    if (CLOSE_DONE_ANY.test(line)) {
       const stated = /\bwill give you a call ([^.?!]+)/i.exec(line)
       if (!this.timeConfirmed && stated) this.when = stated[1].trim()
-      return this.done(GOODBYE.test(line))
+      return this.done()
     }
-    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.done()
+    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.confirmed ? this.done() : CALLBACK_ASK
     // The close's who-decides question, in any wording, and the one the email and receptionist
     // lines end with ("...or is there someone else in charge of that?"); and the name question
     // (sim 2026-10-23: asked three times, "like I told you earlier"). Once the call has asked one,
@@ -232,7 +236,9 @@ export class LiveLineGuard {
     for (const [asked, question] of [[this.askedWho, /someone else in charge/i], [this.askedName, /first name/i]] as const) {
       if (!asked || !question.test(line)) continue
       const kept = sentences(line).filter((s) => !question.test(s)).join(' ').trim()
-      if (!kept) return this.nextCloseStep()
+      // Before a yes there's no close to move on to (verify run: after a "Maybe." the who-decides
+      // question, already asked, became "I've got everything I need"): it's the callback ask.
+      if (!kept) return this.confirmed ? this.nextCloseStep() : CALLBACK_ASK
       line = kept
     }
     if (/first name/i.test(line)) this.askedName = true
@@ -247,16 +253,33 @@ export class LiveLineGuard {
 
   /**
    * The close's last line, with the agreed time read back and a question the lead answers: never a
-   * goodbye before theirs (a goodbye the model tacked on the first time is dropped). Once it has been
-   * said, a goodbye with it means the lead is wrapping up: the goodbye goes; otherwise a short check.
+   * goodbye before theirs (a goodbye the model tacked on is dropped). The close is said once: after
+   * the lead has answered it, it's the goodbye.
    */
-  private done(withGoodbye = false): string {
-    const said = this.doneSaid
+  private done(): string {
+    if (this.doneSaid) return SIGNOFF_LINE
     this.doneSaid = true
-    if (said) return withGoodbye ? SIGNOFF_LINE : `Just to confirm, Bob or his partner will call you ${this.when}. ${OKAY_TAG}`
-    return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${this.when}. ${WORK_CHECK}`
+    // The lead's own words when the coach only had "later today" (verify run: "mid-afternoon" and
+    // "until about five" came back as "later today").
+    const when = this.when === 'later today' && this.leadTime ? this.leadTime : this.when
+    return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${when}. ${WORK_CHECK}`
+  }
+
+  private leadTime = ''
+
+  /** What the lead just said: a time they name is kept for the close. */
+  noteLead(text: string): void {
+    const m = LEAD_TIME.exec(text)
+    if (m) this.leadTime = m[0].toLowerCase().replace(/^until (?:about )?/, 'before ').replace(/^by about /, 'by ')
   }
 }
+
+// Any version of the close's last line, the model's or ours.
+const CLOSE_DONE_ANY = /\bI(?:'ve| have) got everything (?:I need|set)\b|\bI have everything I need\b/i
+// The close said again: its last line, or a restated callback time with "would that work" / "okay".
+const CLOSE_RESTATED = /\bI(?:'ve| have) got everything\b|\bI have everything I need\b|\bwill (?:give you a call|call you)\b[^?]*\b(?:would that work|okay)\b/i
+// A time the lead names: "mid-afternoon", "until about five", "tomorrow morning before ten".
+const LEAD_TIME = /\b(?:tomorrow(?: (?:morning|afternoon|evening))?(?: (?:before|after|around|at) (?:\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon))?|(?:this|later this) (?:morning|afternoon|evening)|mid-?(?:morning|afternoon)|(?:before|after|around|at|by|until) (?:about )?(?:\d{1,2}(?::\d{2})?(?: ?[ap]\.?m\.?)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon)|(?:in|within) (?:a day or two|an hour|a couple (?:of )?(?:hours|days)|\d+ (?:minutes|hours))|next week|(?:on )?(?:monday|tuesday|wednesday|thursday|friday))\b/i
 
 // After a line saying what Bob will do; in 34 of the top bookers' 186 bookings.
 const OKAY_CHECK = 'Would that be okay?'

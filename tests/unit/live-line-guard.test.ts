@@ -284,4 +284,32 @@ describe('LiveLineGuard: callback question pacing', () => {
     g2.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
     expect(g2.apply('Got it. Bob will give you a call later today.', true)).toBe('Got it. Bob or his partner will give you a call later today. Would that work for you?');
   });
+  // Verify run, 2026-10-24: three close slips.
+  it('says the close once: answered, a restated close is the goodbye', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
+    g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    expect(g.apply("Perfect, I've got everything I need.", true)).toMatch(/tomorrow morning before ten\. Would that work for you\?$/);
+    // "Yes, that works for me. Thanks, Jen." and the model restates the close in its own words:
+    expect(g.apply("You're welcome, Dana. Perfect, I've got everything set. Bob will give you a call tomorrow morning before ten. Would that work for you?", true))
+      .toBe('Thanks so much. Have a beautiful day!');
+  });
+  it('before a yes, an already-asked close question becomes the callback ask, not the close', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Yes, I'm a real person. I'm Bob's assistant.", true); // asks who handles the website
+    expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
+      .toBe('Would you mind if I have Bob or his partner give you a call?');
+  });
+  it("reads back the lead's own time when the coach only had \"later today\"", async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.noteLead("Sure, have him call me, I'm free until about five.");
+    g.apply("Great. I'll have Bob or his partner call you later today. Can I have your first name, please?", true);
+    g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    expect(g.apply("Perfect, I've got everything I need.", true)).toContain('will give you a call before five. Would that work for you?');
+  });
 });
