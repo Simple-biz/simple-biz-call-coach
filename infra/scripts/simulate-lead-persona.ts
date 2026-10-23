@@ -43,6 +43,7 @@ import { generateAITipStreaming } from '../lib/lambda/shared/claude-client-optim
 import { generateConversationIntelligence } from '../lib/lambda/shared/intelligence-client';
 import { getSecret } from '../lib/lambda/shared/secrets-client';
 import { LiveLineGuard } from '../../src/utils/live-line-guard';
+import { LineGate, type GateVerdict } from '../../src/utils/line-gate';
 import { LiveSession, LIVE_MODEL, gatewayCredits, gatewayKey, tts } from './sim-live-coach';
 
 const LEAD_MODEL = process.env.LEAD_MODEL || 'claude-sonnet-5-5';
@@ -64,6 +65,12 @@ const opt = (name: string) => {
 const LIVE = flag('live');
 const VERBOSE = flag('verbose');
 const JUDGE = flag('judge');
+// --agent-voice: time the agent's side like a real call so the extension's line gate (line-gate.ts)
+// runs: each shown line is read at 160 words/min with the agent's transcripts arriving 0.2-1.2 s
+// late, the lead answers from 0.3 s before the agent finishes to 0.8 s after, and on 40% of long
+// lines says "Mhm." mid-read. A real answer the gate drops is a STALL (Kayser's call, 2026-10-23);
+// a "mhm" whose reply replaces the line mid-read is a SWAP.
+const AGENT_VOICE = flag('agent-voice');
 const JUDGE_MODEL = process.env.JUDGE_MODEL || 'claude-sonnet-5-5';
 // `--random` takes an optional count; a following word that isn't a number is a persona name, not the count.
 const randomArg = opt('random');
@@ -87,7 +94,12 @@ const dim = c(2), bold = c(1), red = c(31), green = c(32), yellow = c(33), cyan 
 // ---------------------------------------------------------------------------
 // Personas
 // ---------------------------------------------------------------------------
+const HELLO_ANSWERS = ['Doing good, thanks.', 'Good, thanks.', 'Fine, thank you.', "I'm good, who's this?", 'Not bad, you?', 'Doing alright, thanks for asking.'];
 const PERSONAS: Record<string, string> = {
+  // Kayser's test call, 2026-10-23: the hello answered with a quick "thanks" stalled the call. Each
+  // variant answers the hello differently; all are interested once they hear the pitch.
+  ...Object.fromEntries(HELLO_ANSWERS.map((h, i) => [`hello-${i + 1}`,
+    `You are Dana Ruiz, owner of Ruiz Landscaping. Answer the phone with exactly: 'Ruiz Landscaping, this is Dana.' When greeted, answer with exactly: '${h}' and nothing else. After the pitch you are interested: your nephew's old website brings in nothing. Ask one question about what they'd do, then agree to a call 'tomorrow morning before ten'. Give your first name, say you're the owner, and that it's probably an update. Never ask how they got your number or about price.`])),
   // Kayser's test call, 2026-10-23: "Doing good, thanks" to the hello got the decline line.
   'interested-thanks':
     "You are Dana Ruiz, owner of Ruiz Landscaping. Answer the phone with exactly: 'Ruiz Landscaping, this is Dana.' When greeted, answer with exactly: 'Doing good, thanks.' and nothing else. After the pitch you are genuinely interested: your nephew's old website brings in nothing. Ask what they'd do with it, then agree to a call 'tomorrow morning before ten'. Give your first name, say you're the owner, and that it's probably an update. Never ask how they got your number or about price.",
@@ -320,6 +332,7 @@ type CallResult = {
   outcome: string; transcripts: Turn[]; turns: TurnLog[]; flags: string[]; rawFlags: string[];
   verdict?: Verdict; noReply: number; premature: string[]; late: string[]; fallbacks: number;
   costUsd: number; costNote: string; ttsCostUsd?: number; leadHeard?: string[]; errors: string[];
+  gateDropsOk?: number; gateOverlaps?: number;
 };
 
 const RUN_ID = `${new Date().toISOString().replace(/[:.]/g, '-')}-${ENGINE}-seed${SEED}`;
@@ -430,6 +443,24 @@ async function runStandard(key: string, persona: string, lead: Anthropic): Promi
 }
 
 // ── realtime: the v3 live coach, fed the lead's speech in real time ──
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+/** --agent-voice: the agent reads a line aloud; their transcripts reach the gate late. Returns when they finish. */
+function agentReads(gate: LineGate, line: string): number {
+  const readMs = (line.split(/\s+/).length / 160) * 60_000;
+  const lagMs = 200 + Math.random() * 1000;
+  for (let at = lagMs; at <= readMs + lagMs; at += 250) setTimeout(() => gate.agentSpoke(), at);
+  return Date.now() + readMs;
+}
+/** What the extension finally does with a reply: realtime-auto.ts holds it while the gate says hold. */
+async function settle(gate: LineGate): Promise<Exclude<GateVerdict, 'hold'>> {
+  for (let i = 0; i < 400; i++) {
+    const v = gate.verdict();
+    if (v !== 'hold') return v;
+    await sleep(50);
+  }
+  return 'show';
+}
 async function runRealtime(key: string, persona: string, lead: Anthropic, spendStart: number | null): Promise<CallResult> {
   const r = newResult(key, persona, 'realtime');
   r.ttsCostUsd = 0;
@@ -447,8 +478,33 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
       if (now && now.totalUsed - spendStart > MAX_SPEND) throw new Error(`spend cap: gateway total_used up $${(now.totalUsed - spendStart).toFixed(2)} (> $${MAX_SPEND}) — call skipped`);
     }
     session = await LiveSession.open();
+    const gate = new LineGate();
+    let readEndAt = 0; // when the agent finishes reading the line on screen (--agent-voice)
+    let mhm: Buffer | null = null;
     for (let i = 0; i < MAX_LEAD_TURNS; i++) {
-      const said = await leadSay(lead, persona, leadView);
+      const saying = leadSay(lead, persona, leadView);
+      if (AGENT_VOICE && readEndAt) {
+        // The agent is reading the last line; maybe a "mhm" lands in the middle of it.
+        const remaining = readEndAt - Date.now();
+        if (remaining > 4500 && Math.random() < 0.4) {
+          await sleep(1500 + Math.random() * (remaining - 4500));
+          if (!mhm) { const v = await tts('Mhm.'); mhm = v.pcm; r.ttsCostUsd! += v.costUsd; }
+          gate.leadStarted();
+          await session.speak(mhm);
+          gate.leadStopped();
+          const bc = await session.awaitReply(8000);
+          if (bc) {
+            // As realtime-auto: held while the agent talks, and discarded once the lead starts
+            // their real answer (due around the end of the agent's line).
+            let v: GateVerdict = gate.verdict();
+            while (v === 'hold' && Date.now() < readEndAt - 300) { await sleep(50); v = gate.verdict(); }
+            if (v === 'hold') v = 'drop';
+            if (v === 'drop') { r.gateDropsOk = (r.gateDropsOk ?? 0) + 1; emit(dim(`   · "Mhm." mid-read: reply dropped, line kept ("${bc.text.slice(0, 50)}")`)); }
+            else { r.flags.push(`turn ${i}: SWAP: a "mhm" mid-read replaced the line`); emit(red(`   ⚠ SWAP: "Mhm." mid-read replaced the line with "${bc.text.slice(0, 60)}"`)); }
+          }
+        }
+      }
+      const said = await saying;
       if (said.includes('[HANGUP]')) { emit(cyan('LEAD   ') + dim('[hangs up]')); r.outcome = 'lead hung up'; break; }
       transcripts.push({ speaker: 'caller', text: said });
       leadView.push({ role: 'assistant', content: said });
@@ -456,8 +512,24 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
 
       const voice = await tts(said);
       r.ttsCostUsd += voice.costUsd;
+      if (AGENT_VOICE && readEndAt) {
+        // Answer around the end of the agent's line, sometimes clipping the last word.
+        const startAt = readEndAt + (-300 + Math.random() * 1100);
+        if (startAt > Date.now()) await sleep(startAt - Date.now());
+        if (startAt < readEndAt) r.gateOverlaps = (r.gateOverlaps ?? 0) + 1;
+      }
+      gate.leadStarted();
       await session.speak(voice.pcm);
-      const reply = await session.awaitReply();
+      gate.leadStopped();
+      let reply = await session.awaitReply();
+      if (reply && AGENT_VOICE) {
+        const v = await settle(gate);
+        if (v === 'drop') {
+          r.flags.push(`turn ${i + 1}: STALL: the gate dropped the reply to a real answer`);
+          emit(red(`   ⚠ STALL: gate dropped the reply to "${said.slice(0, 50)}" ("${reply.text.slice(0, 50)}")`));
+          reply = null;
+        }
+      }
       if (session.isClosed) throw new Error(`live session closed: ${session.errors.join(' | ') || 'no reason'}`);
       const log: TurnLog = { turn: i + 1, lead: said, flags: [] };
       if (!reply) {
@@ -483,6 +555,7 @@ async function runRealtime(key: string, persona: string, lead: Anthropic, spendS
       leadView.push({ role: 'user', content: spoken });
       session.noteAgent(spoken);
       emit(magenta('AGENT  ') + spoken + dim(`   [live · ${reply.delayMs}ms]`));
+      if (AGENT_VOICE) readEndAt = agentReads(gate, spoken);
     }
   } catch (e: any) {
     r.errors.push(String(e?.message || e)); if (r.outcome === 'max turns') r.outcome = 'error';
@@ -639,6 +712,13 @@ async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): Prom
   for (const s of summary.engines) {
     say(bold(`\n${s.engine}`) + `: ${s.lines} lines, ${s.scriptViolations.total} script flag(s), ${s.avgWordsPerLine} words/line, ${s.linesOver25Words} > 25 words, ${s.repeats} repeats, median delay ${s.medianReplyDelayMs ?? '-'}ms, premature ${s.prematureLines}, no-reply ${s.noReplyTurns}, $${s.costUsd} ($${s.costPerTalkMinute ?? '-'}/talk-min)`);
     if (s.judge) say(`  judge: ${s.judge.pass} pass / ${s.judge.fail} fail, ${s.judge.violations} violation(s)`);
+  }
+  if (AGENT_VOICE) {
+    const count = (re: RegExp) => results.reduce((n, r) => n + r.flags.filter((f) => re.test(f)).length, 0);
+    const stalls = count(/STALL:/), swaps = count(/SWAP:/);
+    const ok = results.reduce((n, r) => n + (r.gateDropsOk ?? 0), 0);
+    const overlaps = results.reduce((n, r) => n + (r.gateOverlaps ?? 0), 0);
+    say(bold('\nline gate (--agent-voice)') + `: ${stalls ? red(`${stalls} STALL(S)`) : green('0 stalls')} (real answers dropped), ${swaps ? red(`${swaps} SWAP(S)`) : green('0 swaps')} (mid-read "mhm" replaced the line), ${ok} mid-read "mhm" correctly ignored, ${overlaps} answers that clipped the agent's last words`);
   }
   if (summary.gatewayCredits) say(dim(`\ngateway total_used: $${summary.gatewayCredits.totalUsedBefore} -> $${summary.gatewayCredits.totalUsedAfter} (Δ $${summary.gatewayCredits.delta})`));
   say(dim(`saved: ${OUT_DIR}`));

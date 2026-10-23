@@ -389,4 +389,21 @@ describe('lines while the agent is reading', () => {
     await line(ws, 'Can I have your first name, please?')
     expect(sentOf('REALTIME_TIP').at(-1)).toMatchObject({ text: 'Can I have your first name, please?', final: true })
   })
+
+  // Simulated calls: a reply held while the agent talked popped up just as the lead began answering.
+  it('drops a held reply once the lead starts talking again', async () => {
+    vi.useFakeTimers()
+    const { ws, realtimeAgentSpoke } = await liveSession()
+    realtimeAgentSpoke()
+    ws.event({ type: 'speech-started' })
+    vi.advanceTimersByTime(2500)
+    realtimeAgentSpoke()
+    ws.event({ type: 'speech-stopped' })
+    await line(ws, 'Would you mind if I have Bob or his partner give you a call?')
+    expect(sentOf('REALTIME_TIP')).toHaveLength(0) // held: the agent is talking
+    ws.event({ type: 'speech-started' }) // the lead says more
+    vi.advanceTimersByTime(5000)
+    await flush()
+    expect(sentOf('REALTIME_TIP')).toHaveLength(0)
+  })
 })

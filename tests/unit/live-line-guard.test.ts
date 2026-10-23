@@ -241,4 +241,14 @@ describe('LiveLineGuard: callback question pacing', () => {
     // After the pitch, a real no gets the decline line.
     expect(g.apply('No problem. I appreciate you taking my call.', true)).toBe('No problem. I appreciate you taking my call.');
   });
+  // 43 simulated calls: a lead who skipped the hello for questions never heard the pitch's exact
+  // words, and her goodbye after a booked callback was turned into the pitch.
+  it('lets a real goodbye through once the call is past the hello', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = new LiveLineGuard();
+    g.apply('Hi Dana, how are you doing today?', true);
+    g.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
+    g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
+    expect(g.apply('Thanks so much. Have a beautiful day!', true)).toBe('Thanks so much. Have a beautiful day!');
+  });
 });

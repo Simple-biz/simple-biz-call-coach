@@ -72,7 +72,7 @@ describe('LineGate', () => {
     g.leadStarted()
     c.tick(500)
     g.leadStopped()
-    c.tick(800)
+    c.tick(1400) // the agent reads on past AGENT_CONTINUED_MS
     g.agentSpoke()
     expect(g.verdict()).toBe('drop')
     c.tick(AGENT_QUIET_MS)

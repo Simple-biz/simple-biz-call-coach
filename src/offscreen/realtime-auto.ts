@@ -173,8 +173,13 @@ export async function startRealtimeAuto(getToken: () => Promise<SessionToken> = 
           send({ type: 'REALTIME_TIP_DROPPED' })
           break
         case 'LIVE_COACH_SPEECH':
-          if (msg.phase === 'started') gate.leadStarted()
-          else gate.leadStopped()
+          if (msg.phase === 'started') {
+            gate.leadStarted()
+            // A reply still waiting for the agent to stop answered something earlier; the lead is
+            // saying more now and the coach will answer that. (Simulated calls: a held reply to a
+            // "mhm" popped up just as the lead began their real answer.)
+            held = null
+          } else gate.leadStopped()
           break
         case 'LIVE_COACH_STATUS':
           send({ type: 'REALTIME_STATUS', status: msg.status, detail: msg.detail })

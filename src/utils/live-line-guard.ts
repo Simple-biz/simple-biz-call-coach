@@ -86,7 +86,7 @@ export const MAX_BOB_OR_PARTNER = 2
 
 export class LiveLineGuard {
   private confirmed = false
-  private pitched = false
+  private pastHello = false
   private askedLastLine = false
   private asks = 0
   private bobOrPartner = 0
@@ -97,10 +97,12 @@ export class LiveLineGuard {
     this.prevAsked = this.askedLastLine
     if (this.confirmed && line.trim() === DECLINE_LINE) line = SIGNOFF_LINE
     // Kayser's test call, 2026-10-23: the lead answered the hello with "Doing good, thanks" and the
-    // coach said its goodbye; the call stalled before the pitch was ever given. No goodbye before
-    // the pitch: the line becomes the pitch.
-    if (!this.pitched && GOODBYE.test(line)) line = OPENER
-    if (line.includes('Bob Hansen and I')) this.pitched = true
+    // coach said its goodbye; the call stalled before the pitch was ever given. A goodbye right
+    // after the hello becomes the pitch. Only there: 43 simulated calls later, a lead who skipped
+    // the hello for questions never heard the pitch's exact words, and her real goodbye after a
+    // booked callback was turned into the pitch (3 of 4 runs). Any line past the hello ends it.
+    if (!this.pastHello && GOODBYE.test(line)) line = OPENER
+    if (!/how are you/i.test(line)) this.pastHello = true
     // Kayser's test calls, 2026-10-23: the callback question on 7 lines in 3 minutes, then on 4
     // lines in 2.5 minutes once it could no longer come twice in a row. Of 170 good booked calls in
     // the 500 mined, 161 asked it once or not at all. Never in two lines in a row, never more than

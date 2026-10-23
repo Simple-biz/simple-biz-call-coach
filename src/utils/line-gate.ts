@@ -16,11 +16,14 @@
  * arrive up to a second late, so a quick answer to the agent's question ("Doing good, thanks" to
  * "How are you?") looks like it overlapped the agent. Kayser's next test call: that answer was taken
  * for a backchannel, the pitch was dropped and the call stalled. So overlap alone no longer drops a
- * reply: the agent must also have kept talking AGENT_CONTINUED_MS after the lead stopped.
+ * reply: the agent must also have kept talking AGENT_CONTINUED_MS after the lead stopped. That has to
+ * outlast the transcript lag: a lead clipping the agent's last word by 0.3 s with a 0.4 s answer
+ * trails the agent's late transcript by up to (lag - 0.1 s). 700 ms dropped such an answer in the
+ * stress test (tests/unit/line-gate-stress.test.ts, lag up to 1.2 s); 1300 ms holds it.
  */
 export const AGENT_QUIET_MS = 1500
 export const BACKCHANNEL_MS = 1300
-export const AGENT_CONTINUED_MS = 700
+export const AGENT_CONTINUED_MS = 1300
 
 export type GateVerdict = 'show' | 'hold' | 'drop'
 
