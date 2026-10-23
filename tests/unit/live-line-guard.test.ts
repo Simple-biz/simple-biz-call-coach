@@ -345,4 +345,39 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
       .toMatch(/^Just to confirm, Bob .*will call you around 2:30\. Okay\?$/);
   });
+  // Verify runs K and L, 2026-10-24.
+  it("lets the close through once the lead said yes in their own words (no loop of callback asks)", async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    g.noteLead("Sure, Dana's fine, have Bob call me tomorrow morning before ten.");
+    g.apply('Thanks, Dana. Would they talk to you about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call tomorrow morning before ten. Would that work for you?", true))
+      .toMatch(/^Perfect, I've got everything I need\. Bob .*tomorrow morning before ten\. Would that work for you\?$/);
+  });
+  it('holds a close back for a yes at most once', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    expect(g.apply("Perfect, I've got everything I need.", true)).toBe('Would you mind if I have Bob or his partner give you a call?');
+    expect(g.apply("Perfect, I've got everything I need.", true)).not.toMatch(/^Would you mind/);
+  });
+  it('says goodbye once the lead answered the close, even if the model asks for the name again', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
+    g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    g.apply("Perfect, I've got everything I need.", true);
+    g.noteLead('Yep, that works for me.');
+    expect(g.apply('Great, can I have your first name, please?', true)).toBe('Thanks so much. Have a beautiful day!');
+  });
+  it('counts "give Dr. Patel a call" as a callback ask', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply('Would you mind if I have Bob or his partner give you a call?', true);
+    // The line right after an ask: its ask goes, the answer stays.
+    expect(g.apply('Got it, Dr. Patel handles the website. Would you mind if I have Bob give Dr. Patel a call later today?', true))
+      .not.toMatch(/give Dr\. Patel a call/);
+  });
 });

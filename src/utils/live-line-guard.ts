@@ -237,10 +237,10 @@ export class LiveLineGuard {
       // Verify run: an email-only lead got "I've got everything I need" without ever agreeing to a
       // call, and other calls skipped who decides and build or update. The close needs the yes,
       // then its questions.
-      if (!this.confirmed) return CALLBACK_ASK
+      if (!this.confirmed && this.blockClose()) return CALLBACK_ASK
       return this.askedWho && this.askedPurpose ? this.done() : this.nextCloseStep()
     }
-    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.confirmed ? this.done() : CALLBACK_ASK
+    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.confirmed || !this.blockClose() ? this.done() : CALLBACK_ASK
     // The close's who-decides question, in any wording, and the one the email and receptionist
     // lines end with ("...or is there someone else in charge of that?"); and the name question
     // (sim 2026-10-23: asked three times, "like I told you earlier"). Once the call has asked one,
@@ -250,7 +250,7 @@ export class LiveLineGuard {
       const kept = sentences(line).filter((s) => !question.test(s)).join(' ').trim()
       // Before a yes there's no close to move on to (verify run: after a "Maybe." the who-decides
       // question, already asked, became "I've got everything I need"): it's the callback ask.
-      if (!kept) return this.confirmed ? this.nextCloseStep() : CALLBACK_ASK
+      if (!kept) return this.confirmed || !this.blockClose() ? this.nextCloseStep() : CALLBACK_ASK
       line = kept
     }
     if (/first name/i.test(line)) this.askedName = true
@@ -260,8 +260,10 @@ export class LiveLineGuard {
   private nextCloseStep(): string {
     if (!this.askedWho) return CLOSE_DECISION_MAKER
     if (!this.askedPurpose) return CLOSE_PURPOSE
-    // Close already said: confirm the time again (picking up one named since, "around 2:30"), not
-    // a goodbye while the lead is still talking (verify run).
+    // Close already said and the lead answered it ("Yep, that works for me"): the goodbye. Not
+    // answered yet: confirm the time again (picking up one named since, "around 2:30"), not a
+    // goodbye while the lead is still talking (verify runs).
+    if (this.doneSaid && this.closeAnswered) return SIGNOFF_LINE
     if (this.doneSaid) return `Just to confirm, Bob or his partner will call you ${this.whenText()}. ${OKAY_TAG}`
     return this.done()
   }
@@ -284,14 +286,45 @@ export class LiveLineGuard {
     return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${this.whenText()}. ${WORK_CHECK}`
   }
 
-  private leadTime = ''
+  /**
+   * Holds the close back for a yes at most once. Verify run K, 2026-10-24: a lead said yes four
+   * times ("have Bob call me tomorrow morning before ten") while the guard, reading only the coach's
+   * wording, kept turning the close into the callback question. Whatever the yes detection misses,
+   * the close goes through the second time.
+   */
+  private blockClose(): boolean {
+    if (this.closeBlocked) return false
+    this.closeBlocked = true
+    return true
+  }
 
-  /** What the lead just said: a time they name is kept for the close. */
+  private leadTime = ''
+  private closeBlocked = false
+  private closeAnswered = false
+
+  /**
+   * What the lead just said (the session's own transcript). A time they name is kept for the close.
+   * After a callback ask, a yes in their words ("sure", "that works", "Bob's welcome to call", or a
+   * time) is the yes, whatever the coach then says; after the close, it answers the close.
+   */
   noteLead(text: string): void {
+    const before = this.whenText()
     const m = LEAD_TIME.exec(text)
     if (m) this.leadTime = m[0].toLowerCase().replace(/^until (?:about )?/, 'before ').replace(/^by about /, 'by ')
+    const newTime = !!m && this.whenText() !== before
+    const yes = !LEAD_NO.test(text) && (LEAD_YES.test(text) || (!!m && !text.trim().endsWith('?')))
+    if (this.doneSaid) {
+      // "Yep, that works" answers the close; "I'm free around 2:30" changes it (confirm it again).
+      this.closeAnswered = yes && !newTime
+      return
+    }
+    if (yes && this.asks > 0) this.confirmed = true
   }
 }
+
+// The lead agreeing, in their words; and a clear no that outweighs it.
+const LEAD_YES = /\b(?:yes|yeah|yep|yup|sure|of course|go ahead|that works|works for me|that's fine|that'd be fine|that is fine|sounds good|please do|have (?:him|bob|them) call|(?:he's|bob's|they're) welcome to call|feel free|that's okay|it's okay)\b/i
+const LEAD_NO = /\b(?:no thanks|not interested|don't need|do not need|don't call|stop calling|take me off|not today or|no, thank)\b/i
 
 // Any version of the close's last line, the model's or ours.
 const CLOSE_DONE_ANY = /\bI(?:'ve| have) got everything (?:I need|set)\b|\bI have everything I need\b/i
@@ -329,7 +362,8 @@ function sentences(text: string): string[] {
 
 // Any form of the callback question: "Would you mind if I have Bob or his partner give you a call
 // ...?", "...reach out to you later today?", "Would it be okay if Bob or his partner...?".
-const ANY_CALLBACK_ASK_SRC = String.raw`\s*(?:Would you mind|Would it be okay|Is it okay|Can I have)[^?]*(?:give (?:you|them|him|her|the owner)[^?]*call|reach out|call you)[^?]*\?`
+// "give Dr. Patel a call" too (verify run L: asked four times because only you/them/him/her/the owner matched).
+const ANY_CALLBACK_ASK_SRC = String.raw`\s*(?:Would you mind|Would it be okay|Is it okay|Can I have)[^?]*(?:give [^?]{1,40}?call|reach out|call you)[^?]*\?`
 const ANY_CALLBACK_ASK = new RegExp(ANY_CALLBACK_ASK_SRC, 'i')
 const ANY_CALLBACK_ASK_G = new RegExp(ANY_CALLBACK_ASK_SRC, 'gi')
 
