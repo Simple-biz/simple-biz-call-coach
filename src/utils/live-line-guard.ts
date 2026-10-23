@@ -144,6 +144,7 @@ export class LiveLineGuard {
   private askedPurpose = false
   private lastCheck = ''
   private timeConfirmed = false
+  private when = 'later today'
   private doneSaid = false
   private askedName = false
   private prevAsked = false
@@ -176,7 +177,12 @@ export class LiveLineGuard {
         this.askedPurpose = true
         return `${t} ${CLOSE_PURPOSE}`
       }
-      return line
+      // Kayser, 2026-10-24: "it should not be the conversation ender, sometimes leads don't answer".
+      // A flat confirmation ("Bob will give you a call later today.") gets the top bookers' check.
+      const next = /\b(?:call|reach out)\b/i.test(t) && check !== WORK_CHECK ? WORK_CHECK : check !== OKAY_TAG ? OKAY_TAG : ''
+      if (!next) return line
+      this.lastCheck = next
+      return `${t} ${next}`
     }
     if (!this.askedWho) {
       this.askedWho = true
@@ -197,17 +203,28 @@ export class LiveLineGuard {
       // question twice ("Is it okay to talk to you later today when you're less busy instead?").
       return `${t} ${this.prevAsked ? BUSY_ASK : CALLBACK_ASK}`
     }
-    return line
+    // Nothing else left to ask right after an ask ("Bob is in Topeka."): their most common tag.
+    if (check === OKAY_TAG) return line
+    this.lastCheck = OKAY_TAG
+    return `${t} ${OKAY_TAG}`
   }
 
   /** The close asks who decides, then build or update; a question the call already had is skipped. */
   private skipAskedCloseQuestion(line: string): string {
     // Sim 2026-10-23: "Sure, I'll have Bob call you tomorrow morning before ten." then a last line
-    // of "...will give you a call later today." Once the lead's time is confirmed, the last line
-    // doesn't restate a time.
-    if (/\bI'll have Bob\b[^.?!]*\bcall you\b/i.test(line)) this.timeConfirmed = true
-    if (this.timeConfirmed && line.includes(CLOSE_DONE_SHORT)) return this.done(line.includes(SIGNOFF_LINE))
-    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.done(false)
+    // of "...will give you a call later today." The time the lead agreed is kept, and the close's
+    // last line reads it back (the judge kept noting it was never said back) and asks if it works.
+    const agreed = /\bI'll have Bob\b[^.?!]*?\bcall you\b([^.?!]*)/i.exec(line)
+    if (agreed) {
+      this.timeConfirmed = true
+      if (agreed[1].trim()) this.when = agreed[1].trim()
+    }
+    if (line.includes(CLOSE_DONE_SHORT)) {
+      const stated = /\bwill give you a call ([^.?!]+)/i.exec(line)
+      if (!this.timeConfirmed && stated) this.when = stated[1].trim()
+      return this.done(GOODBYE.test(line))
+    }
+    if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.done()
     // The close's who-decides question, in any wording, and the one the email and receptionist
     // lines end with ("...or is there someone else in charge of that?"); and the name question
     // (sim 2026-10-23: asked three times, "like I told you earlier"). Once the call has asked one,
@@ -219,28 +236,34 @@ export class LiveLineGuard {
       line = kept
     }
     if (/first name/i.test(line)) this.askedName = true
-    if (line.includes(CLOSE_DONE_SHORT)) this.doneSaid = true
     return line
   }
 
   private nextCloseStep(): string {
     if (!this.askedWho) return CLOSE_DECISION_MAKER
     if (!this.askedPurpose) return CLOSE_PURPOSE
-    return this.done(false)
+    return this.done()
   }
 
-  /** The close's last line, said once; after that only the goodbye. */
-  private done(withSignoff: boolean): string {
+  /**
+   * The close's last line, with the agreed time read back and a question the lead answers: never a
+   * goodbye before theirs (a goodbye the model tacked on the first time is dropped). Once it has been
+   * said, a goodbye with it means the lead is wrapping up: the goodbye goes; otherwise a short check.
+   */
+  private done(withGoodbye = false): string {
     const said = this.doneSaid
     this.doneSaid = true
-    if (said) return SIGNOFF_LINE
-    return withSignoff ? `${CLOSE_DONE_SHORT} ${SIGNOFF_LINE}` : CLOSE_DONE_SHORT
+    if (said) return withGoodbye ? SIGNOFF_LINE : `Just to confirm, Bob or his partner will call you ${this.when}. ${OKAY_TAG}`
+    return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${this.when}. ${WORK_CHECK}`
   }
 }
 
 // After a line saying what Bob will do; in 34 of the top bookers' 186 bookings.
 const OKAY_CHECK = 'Would that be okay?'
 const BUSY_ASK = "Is it okay if Bob calls you later today, when you're less busy?"
+// The top bookers' checks: "Would that work?" in 22 of their 186 bookings, "okay?" in 136.
+const WORK_CHECK = 'Would that work for you?'
+const OKAY_TAG = 'Okay?'
 
 // The close's last line when the time was already confirmed in an earlier line.
 const CLOSE_DONE_SHORT = "Perfect, I've got everything I need."

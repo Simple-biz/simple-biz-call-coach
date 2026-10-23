@@ -182,7 +182,7 @@ describe('LiveLineGuard: callback question pacing', () => {
     g.apply('Would you mind if I have Bob or his partner give you a call?', true);
     g.apply("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.", true);
     expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today.", true))
-      .toBe("Perfect, I've got everything I need. Bob will give you a call later today.");
+      .toBe("Perfect, I've got everything I need. Bob will give you a call later today. Would that work for you?");
   });
   // Sim 2026-10-23: the close asked who decides and build-or-update again after both were answered.
   it('skips close questions the call already asked', async () => {
@@ -191,16 +191,16 @@ describe('LiveLineGuard: callback question pacing', () => {
     expect(g.apply("Yes, I'm a real person. I'm Bob's assistant.", true)).toMatch(/Are you the one who handles the website\?$/);
     expect(g.apply("It's Simple.biz.", true)).toMatch(/building a new website, or updating one\?$/);
     g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
-    // Reworded by the model (sim 2026-10-23), still skipped.
+    // Reworded by the model (sim 2026-10-23), still skipped. The close's last line reads back the
+    // agreed time and asks (Kayser, 2026-10-24: leads don't always answer, so never end flat).
     expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
-      .toBe("Perfect, I've got everything I need.");
+      .toBe("Perfect, I've got everything I need. Bob or his partner will give you a call tomorrow morning before ten. Would that work for you?");
     // The email line's own who-decides question isn't asked again either.
     const g2 = pitched(new LiveLineGuard());
     g2.apply("Yes, I'm a real person. I'm Bob's assistant.", true);
     expect(g2.apply("Absolutely. What's the best email address? Since I'm just his assistant, would they be calling to talk to you about the website, or is there someone else in charge of that?", true))
       .toBe("Absolutely. What's the best email address?");
-    // The time was confirmed above: the last line doesn't restate "later today", and the close's
-    // last line isn't said twice; a goodbye with it is kept.
+    // The close's last line isn't said twice: with a goodbye, after it was said, the goodbye goes.
     expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today. Thanks so much. Have a beautiful day!", true))
       .toBe('Thanks so much. Have a beautiful day!');
   });
@@ -267,5 +267,21 @@ describe('LiveLineGuard: callback question pacing', () => {
     for (const lead of ["No thanks, I don't need a website. Word of mouth keeps me busy.", 'Not interested. Take me off your list.']) {
       expect(futureDateInsteadOfDecline('No problem. I appreciate you taking my call.', lead)).toBe('No problem. I appreciate you taking my call.');
     }
+  });
+  // Kayser, 2026-10-24: "it should not be the conversation ender, sometimes leads don't answer".
+  it("ends the close and flat confirmations on a question, never a goodbye before the lead's", async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Sure, I'll have Bob or his partner call you after three. Can I have your first name, please?", true);
+    g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    // The model tacked a goodbye on: dropped, the time read back, a question asked.
+    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today. Thanks so much. Have a beautiful day!", true))
+      .toBe("Perfect, I've got everything I need. Bob or his partner will give you a call after three. Would that work for you?");
+    const g2 = pitched(new LiveLineGuard());
+    g2.apply("Sure, I'll have Bob or his partner call you later today. Can I have your first name, please?", true);
+    g2.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g2.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    expect(g2.apply('Got it. Bob will give you a call later today.', true)).toBe('Got it. Bob or his partner will give you a call later today. Would that work for you?');
   });
 });
