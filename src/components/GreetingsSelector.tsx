@@ -2,7 +2,7 @@ import { MessageSquare, Zap, Sparkles, AlertCircle, ArrowRight } from 'lucide-re
 import { useCallStore } from '@/stores/call-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useSettingsStore } from '@/stores/settings-store'
-import { OPENER } from '../../infra/lib/experiments/live-coach-instructions'
+import { OPENING_GREETING } from '../../infra/lib/experiments/live-coach-instructions'
 import type { ScriptOption, ScriptTextSize } from '@/types'
 import { logger } from '@/utils/logger'
 
@@ -12,15 +12,14 @@ interface GreetingsSelectorProps {
   onRegenerate?: () => void // Kept for interface compatibility but optional
 }
 
-// The card before the first line arrives: the official opener (doc/reference/official-call-script.md),
-// the same text the live coach is told to give. The old "Hi, this is [Agent Name] from Simple.Biz"
-// line was not in the script.
+// The card before the first line arrives: the hello the top bookers open with, the same line the live
+// coach is told to give first; the pitch follows once the lead answers (live-coach-instructions.ts).
 const INITIAL_GREETINGS: ScriptOption[] = [
   {
     id: 'greeting-basic',
     type: 'greeting',
     label: 'Opener',
-    script: OPENER,
+    script: OPENING_GREETING,
     icon: 'message'
   }
 ]

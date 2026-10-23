@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { buildInstructions, OPENER, REBUTTALS, DECLINE_LINE, PRICE_PUSHED_AGAIN } from '@infra/lib/experiments/live-coach-instructions';
+import { buildInstructions, OPENER, OPENING_GREETING, REBUTTALS, DECLINE_LINE, PRICE_PUSHED_AGAIN } from '@infra/lib/experiments/live-coach-instructions';
 import { SCRIPT_DEFLECT, CALLBACK_ASK } from '@infra/lib/lambda/shared/script-guard';
 import { PRICING_REDIRECT } from '@infra/lib/lambda/shared/price-guard';
 
@@ -30,18 +30,19 @@ describe('live coach instructions', () => {
     for (const line of rebuttals) expect(text).toContain(line);
   });
 
-  // The opener is the top bookers' shorter version (Kayser, 2026-10-23), not the script's word for
-  // word; it must still make every claim the script's does.
-  it('carries the top bookers\' opener with every claim of the script\'s, and the "doesn\'t understand" line word for word', () => {
+  // The opening is the top bookers' two beats (Kayser, 2026-10-23: "copy how the agents do it"), not
+  // the script's opener word for word; the pitch must still make every claim the script's does.
+  it('opens like the top bookers: a hello, then a pitch with every claim of the script\'s', () => {
     const [opener, explainer] = scriptLines('## Opener', '## Rebuttals');
     expect(opener).toContain("I know you're busy");
     expect(OPENER).not.toContain("I know you're busy");
     expect(OPENER).not.toMatch(/[—–]/);
-    for (const claim of ['my name is [Agent]', 'Bob Hansen and I are local website designers here in [Place]',
-      'businesses and contractors lock down Page-1 rankings on Google and ChatGPT', 'fully manage their Google Business Profile',
+    for (const claim of ['My name is [Agent]', 'Bob Hansen and I are local website designers here in [Place]',
+      'businesses and contractors lock down Page-1 rankings on Google and ChatGPT', 'fully manage your Google Business Profile',
       "within 90 days, or it's completely free", 'connect with someone local']) {
       expect(OPENER).toContain(claim);
     }
+    expect(text).toContain(OPENING_GREETING);
     expect(text).toContain(OPENER);
     expect(text).toContain(explainer);
   });

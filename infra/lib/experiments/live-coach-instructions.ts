@@ -39,12 +39,16 @@ export const CLOSE_DONE = "Perfect, I've got everything I need. Bob or his partn
 // ("...later today. Got it. Bob or his partner will give you a call later today."), so it no longer restates it.
 export const SIGNOFF_LINE = 'Thanks so much. Have a beautiful day!'
 
-// The opener as the month's top bookers say it, not the script's word for word (Kayser, 2026-10-23:
-// "the opening was like super long with the em dash"). Of their 186 real bookings: "I know you're
-// busy" in 13%, so it's gone; the em dashes are gone; "building or updating your website" (22%)
-// replaces "about an update" (14%). Every claim the script makes is kept.
+// The opening as the month's top bookers do it, not the script's word for word (Kayser, 2026-10-23:
+// "the opening was like super long with the em dash", then "copy how the agents do it"). Their best-
+// rated calls open in two beats: a quick hello that waits for an answer ("Hi, is this Ron?", "How
+// are you doing, sir?", "Thanks for returning my call"), then the pitch in their own words ("My name
+// is Mark. Real quick, Bob Hanson and I are..."). Of their 186 real bookings, "I know you're busy" is
+// in 13%, so it's gone, and "building or updating your website" (22%) replaces "about an update"
+// (14%). Every claim the script makes is kept, without the em dashes.
+export const OPENING_GREETING = 'Hi, how are you doing today?'
 export const OPENER =
-  "Hi, my name is [Agent]. Bob Hansen and I are local website designers here in [Place]. We help businesses and contractors lock down Page-1 rankings on Google and ChatGPT, plus fully manage their Google Business Profile, within 90 days, or it's completely free. I wanted to see if it makes sense to connect with someone local about building or updating your website?"
+  "My name is [Agent]. Real quick, Bob Hansen and I are local website designers here in [Place]. We help businesses and contractors lock down Page-1 rankings on Google and ChatGPT, plus fully manage your Google Business Profile, within 90 days, or it's completely free. Just wanted to see if it makes sense to connect with someone local about building or updating your website?"
 
 // Verbatim from official-call-script.md. Placeholders are the agent's to fill.
 export const REBUTTALS: ReadonlyArray<readonly [when: string, say: string]> = [
@@ -76,7 +80,10 @@ const ROLE = [
 
 // 2026-10-22 simulator round: the coach skipped the opener on 7 of 8 calls and offered a callback
 // to leads who had no idea who Bob was.
-const START_OF_CALL = `START OF THE CALL: until the notes show the agent has said the opener (their name and Bob Hansen), your next line IS the opener, word for word: "${OPENER}" Never offer a callback before the lead has heard it. Once the agent has said it, never repeat it. If the lead asks who Bob is or what this is about, answer with the "doesn't understand" line below. If the lead is a voicemail or an automated system and offers a callback, accept it and give "[Bob's number]"; do not pitch.`
+const START_OF_CALL = `START OF THE CALL, in two beats like the top bookers:
+1. THE HELLO: until the agent has greeted the lead, your line is "${OPENING_GREETING}". If the lead gave their name, put it in ("Hi Dana, how are you doing today?"). If they say they're returning a missed call: "Hi, thanks for returning our call! How are you doing today?" Then wait for their answer.
+2. THE PITCH: once the lead has answered the hello, or if they skip it ("who's this?", "what's this about?"), your line is the pitch, word for word: "${OPENER}" A two-word acknowledgment before it is fine ("Great.", "Good to hear."). Never offer a callback before the lead has heard the pitch. Once the agent has said it (their name and Bob Hansen), never repeat it.
+If the lead asks who Bob is or what this is about after the pitch, answer with the "doesn't understand" line below. If the lead is a voicemail or an automated system and offers a callback, accept it and give "[Bob's number]"; do not pitch.`
 
 const GOAL = `GOAL: the owner (the decision maker) agrees to a callback from "Bob or his partner" later today. The callback question is "${CALLBACK_ASK}" (or the matching rebuttal's own ending).
 HOW THE BEST AGENTS TALK (the month's 8 top bookers, 13-26% of connected calls booked against a 5% median; 186 of their real bookings, 2026-10-23):
