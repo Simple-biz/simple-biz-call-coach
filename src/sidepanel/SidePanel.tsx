@@ -432,6 +432,7 @@ export default function SidePanel() {
             session: null,
             audioLevel: 0,
             currentScriptOptions: [],
+            previousScriptLine: null,
             streamingTip: null,
             isGeneratingTip: false,
           });

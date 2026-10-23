@@ -12,6 +12,7 @@ interface SettingsStore extends Settings {
   setTheme: (theme: 'light' | 'dark' | 'system') => void
   setCompactMode: (compactMode: boolean) => void
   setScriptTextSize: (scriptTextSize: ScriptTextSize) => void
+  setCallDetails: (details: Partial<Pick<Settings, 'agentName' | 'agentPlace' | 'bobNumber'>>) => void
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -26,6 +27,9 @@ export const useSettingsStore = create<SettingsStore>()(
       theme: 'system',
       compactMode: false,
       scriptTextSize: 'lg',
+      agentName: '',
+      agentPlace: '',
+      bobNumber: '',
 
       setDeepgramApiKey: (deepgramApiKey) => set({ deepgramApiKey }),
       setN8nWebhookUrl: (n8nWebhookUrl) => set({ n8nWebhookUrl }),
@@ -36,6 +40,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setTheme: (theme) => set({ theme }),
       setCompactMode: (compactMode) => set({ compactMode }),
       setScriptTextSize: (scriptTextSize) => set({ scriptTextSize }),
+      setCallDetails: (details) => set(details),
     }),
     {
       name: 'devassist-settings',

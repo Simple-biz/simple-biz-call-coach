@@ -38,6 +38,8 @@ interface CallStore {
 
   // Script Options field (for GreetingsSelector)
   currentScriptOptions: ScriptOption[];
+  // The last finished line, shown faded under a new one so an agent caught mid-read can finish it.
+  previousScriptLine: string | null;
 
   // Streaming tip state (progressive rendering)
   streamingTip: { heading?: string; stage?: string; text: string } | null;
@@ -132,6 +134,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
 
   // Script Options initial state
   currentScriptOptions: [],
+  previousScriptLine: null,
 
   // Streaming tip initial state
   streamingTip: null,
@@ -155,6 +158,9 @@ export const useCallStore = create<CallStore>((set, get) => ({
       transcriptions: [],
       coachingTips: [],
       deepgramStatus: "disconnected" as "disconnected" | "connected" | "error",
+      // Each call starts on the hello card, not the last call's final line.
+      currentScriptOptions: [] as ScriptOption[],
+      previousScriptLine: null,
     };
 
     set(newState);
@@ -232,6 +238,7 @@ export const useCallStore = create<CallStore>((set, get) => ({
       lastAIUpdate: null,
       // Clear Intelligence state
       intelligence: null,
+      previousScriptLine: null,
       entities: null,
     };
 
@@ -414,7 +421,14 @@ export const useCallStore = create<CallStore>((set, get) => ({
   },
 
   setCurrentScriptOptions: (options) => {
-    set({ currentScriptOptions: options });
+    // A new line (or the first draft of one) replacing a finished line: keep that line as the
+    // previous one. A draft turning into its finished line keeps the previous line as it was.
+    const current = get().currentScriptOptions[0];
+    const next = options[0];
+    const previousScriptLine = current && current.id !== 'realtime-live' && next && next.script !== current.script
+      ? current.script
+      : get().previousScriptLine;
+    set({ currentScriptOptions: options, previousScriptLine });
     console.log(`📝 [Store] Updated script options: ${options.length} options`);
     persistState(get());
   },

@@ -119,9 +119,13 @@ export function ChatThread({
     );
   }
 
+  // Before anyone has spoken the thread is one line, not a tall empty box above the card
+  // (Kayser's screenshot, 2026-10-23); it grows once the call has words.
+  const empty = transcriptions.length === 0;
+
   return (
-    <div className="flex-1 min-h-0 px-3 pb-2 overflow-hidden flex flex-col">
-      <div className="bg-white backdrop-blur-sm rounded-xl border border-[#dddddd] flex flex-col shadow-inner flex-1 min-h-0 overflow-hidden">
+    <div className={`${empty ? "" : "flex-1 min-h-0"} px-3 pb-2 overflow-hidden flex flex-col`}>
+      <div className={`bg-white backdrop-blur-sm rounded-xl border border-[#dddddd] flex flex-col shadow-inner overflow-hidden ${empty ? "" : "flex-1 min-h-0"}`}>
         {/* Thread Header */}
         <div className="px-3 py-2 border-b border-[#dddddd] flex items-center justify-between bg-[#F5F7FA] rounded-t-xl shrink-0">
           <div className="flex items-center gap-2">
@@ -171,21 +175,19 @@ export function ChatThread({
         </div>
 
         {/* Thread Messages */}
-        <div className="relative flex-1 min-h-0 flex flex-col">
+        <div className={`relative flex flex-col ${empty ? "" : "flex-1 min-h-0"}`}>
         <div
           ref={scrollContainerRef}
           onScroll={onScroll}
-          className="flex-1 p-2 space-y-1.5 overflow-y-auto min-h-0 custom-scrollbar"
+          className={`p-2 space-y-1.5 overflow-y-auto custom-scrollbar ${empty ? "" : "flex-1 min-h-0"}`}
         >
-          {transcriptions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-[#F5F7FA] flex items-center justify-center border border-[#dddddd]">
-                <Mic className="w-6 h-6 text-gray-600 animate-pulse" />
-              </div>
-              <p className="text-sm text-gray-500 italic max-w-[200px]">
+          {empty ? (
+            <div className="flex items-center justify-center gap-2 py-1.5 text-center">
+              <Mic className="w-3.5 h-3.5 text-gray-600 animate-pulse" />
+              <p className="text-xs text-gray-500 italic">
                 {callState === "active"
                   ? "Listening for conversation..."
-                  : "Start a call to see the live conversation thread"}
+                  : "The conversation shows here once a call starts"}
               </p>
             </div>
           ) : (

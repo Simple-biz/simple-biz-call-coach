@@ -81,7 +81,9 @@ describe('suggested line size', () => {
     (size, cls) => {
       useSettingsStore.setState({ scriptTextSize: size })
       render(<ChatThread {...base} collapsed transcriptions={[]} />)
-      expect(screen.getByText(SCRIPT).className).toContain(cls)
+      // The line renders in segments (the closing question is its own bold span), so the size
+      // class is on the line's container.
+      expect(screen.getByText(SCRIPT).closest('div')!.className).toContain(cls)
     },
   )
 })
