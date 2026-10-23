@@ -181,8 +181,8 @@ describe('LiveLineGuard: callback question pacing', () => {
     const g = pitched(new LiveLineGuard());
     g.apply('Would you mind if I have Bob or his partner give you a call?', true);
     g.apply("Great question. It depends on what you're looking for. I'll have Bob or his partner give you a call to go over some options and pricing.", true);
-    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today.", true))
-      .toBe("Perfect, I've got everything I need. Bob will give you a call later today. Would that work for you?");
+    expect(g.apply("Sure, I'll have Bob or his partner call you after three.", true))
+      .toMatch(/^Sure, I'll have Bob call you after three\./);
   });
   // Sim 2026-10-23: the close asked who decides and build-or-update again after both were answered.
   it('skips close questions the call already asked', async () => {
@@ -311,5 +311,38 @@ describe('LiveLineGuard: callback question pacing', () => {
     g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
     g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
     expect(g.apply("Perfect, I've got everything I need.", true)).toContain('will give you a call before five. Would that work for you?');
+  });
+  // Verify run J, 2026-10-24.
+  it('no close without a yes to a call (an email-only lead)', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Absolutely. What's the best email address?", true);
+    expect(g.apply("Perfect, I've got everything I need. Bob or his partner will give you a call later today. Would that work for you?", true))
+      .toBe('Would you mind if I have Bob or his partner give you a call?');
+  });
+  it('asks the close questions before the close, drops a callback ask after the yes, and catches a reworded loop', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Sure, I'll have Bob or his partner call you tomorrow morning before ten. Can I have your first name, please?", true);
+    // The model jumps to the close: who decides first.
+    expect(g.apply("Perfect, I've got everything I need.", true)).toBe('Would they talk to YOU about the website, or is there someone else in charge of that?');
+    // A callback ask after the yes goes; the close moves on.
+    expect(g.apply('Would you mind if I have Bob or his partner give you a call?', true))
+      .toBe("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?");
+    expect(g.apply("Perfect, I've got everything I need.", true)).toMatch(/tomorrow morning before ten\. Would that work for you\?$/);
+    // Answered; the model rewords the close: the goodbye.
+    expect(g.apply("Great, I'll have Bob give you a call tomorrow morning before ten. Would that work for you?", true))
+      .toBe('Thanks so much. Have a beautiful day!');
+  });
+  it('after the close, a repeated close question confirms the time again instead of a goodbye', async () => {
+    const { LiveLineGuard } = await import('@/utils/live-line-guard');
+    const g = pitched(new LiveLineGuard());
+    g.apply("Sure, I'll have Bob or his partner call you later today. Can I have your first name, please?", true);
+    g.apply('Would they talk to YOU about the website, or is there someone else in charge of that?', true);
+    g.apply("Just to make sure we're on the same page, is this to build a new website, or to update your existing website?", true);
+    g.apply("Perfect, I've got everything I need.", true);
+    g.noteLead("Email first, and keep the call short. I'm free around 2:30.");
+    expect(g.apply('Would they talk to you about the website, or is there someone else in charge of that?', true))
+      .toMatch(/^Just to confirm, Bob .*will call you around 2:30\. Okay\?$/);
   });
 });

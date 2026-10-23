@@ -103,6 +103,12 @@ export class LiveLineGuard {
     // booked callback was turned into the pitch (3 of 4 runs). Any line past the hello ends it.
     if (!this.pastHello && GOODBYE.test(line)) line = OPENER
     if (!/how are you/i.test(line)) this.pastHello = true
+    // Verify run, 2026-10-24: the callback question asked again after the lead had said yes. After
+    // a yes it's settled: the ask goes (the answer stays), and a line that was only the ask moves
+    // the close on.
+    if (this.confirmed && ANY_CALLBACK_ASK.test(line) && !THEIR_TIME.test(line)) {
+      line = line.replace(ANY_CALLBACK_ASK_G, '').replace(/\s{2,}/g, ' ').trim() || this.nextCloseStep()
+    }
     // Kayser's test calls, 2026-10-23: the callback question on 7 lines in 3 minutes, then on 4
     // lines in 2.5 minutes once it could no longer come twice in a row. Of 170 good booked calls in
     // the 500 mined, 161 asked it once or not at all. Never in two lines in a row, never more than
@@ -132,7 +138,9 @@ export class LiveLineGuard {
     } else {
       this.askedLastLine = false
     }
-    if ((CALLBACK_STATEMENT.test(line) && !/would you mind/i.test(line)) || line.includes(CLOSE_NAME)) this.confirmed = true
+    // The close's own last line isn't proof of a yes: the model wrote one to a lead who only asked
+    // for an email (verify run, 2026-10-24).
+    if (((CALLBACK_STATEMENT.test(line) && !/would you mind/i.test(line)) || line.includes(CLOSE_NAME)) && !CLOSE_DONE_ANY.test(line)) this.confirmed = true
     // The month's top 8 bookers said "Bob or his partner" 0.66 times a call (186 bookings,
     // 2026-10-23); the coach said it 5-6 times. Past the second, it's just "Bob".
     // After endOnAQuestion, so a callback ask it adds counts too.
@@ -226,7 +234,11 @@ export class LiveLineGuard {
     if (CLOSE_DONE_ANY.test(line)) {
       const stated = /\bwill give you a call ([^.?!]+)/i.exec(line)
       if (!this.timeConfirmed && stated) this.when = stated[1].trim()
-      return this.done()
+      // Verify run: an email-only lead got "I've got everything I need" without ever agreeing to a
+      // call, and other calls skipped who decides and build or update. The close needs the yes,
+      // then its questions.
+      if (!this.confirmed) return CALLBACK_ASK
+      return this.askedWho && this.askedPurpose ? this.done() : this.nextCloseStep()
     }
     if (line.includes(CLOSE_PURPOSE) && this.askedPurpose) return this.confirmed ? this.done() : CALLBACK_ASK
     // The close's who-decides question, in any wording, and the one the email and receptionist
@@ -248,7 +260,15 @@ export class LiveLineGuard {
   private nextCloseStep(): string {
     if (!this.askedWho) return CLOSE_DECISION_MAKER
     if (!this.askedPurpose) return CLOSE_PURPOSE
+    // Close already said: confirm the time again (picking up one named since, "around 2:30"), not
+    // a goodbye while the lead is still talking (verify run).
+    if (this.doneSaid) return `Just to confirm, Bob or his partner will call you ${this.whenText()}. ${OKAY_TAG}`
     return this.done()
+  }
+
+  /** The agreed time, or the lead's own words when the coach only had "later today". */
+  private whenText(): string {
+    return this.when === 'later today' && this.leadTime ? this.leadTime : this.when
   }
 
   /**
@@ -261,8 +281,7 @@ export class LiveLineGuard {
     this.doneSaid = true
     // The lead's own words when the coach only had "later today" (verify run: "mid-afternoon" and
     // "until about five" came back as "later today").
-    const when = this.when === 'later today' && this.leadTime ? this.leadTime : this.when
-    return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${when}. ${WORK_CHECK}`
+    return `${CLOSE_DONE_SHORT} Bob or his partner will give you a call ${this.whenText()}. ${WORK_CHECK}`
   }
 
   private leadTime = ''
@@ -277,7 +296,9 @@ export class LiveLineGuard {
 // Any version of the close's last line, the model's or ours.
 const CLOSE_DONE_ANY = /\bI(?:'ve| have) got everything (?:I need|set)\b|\bI have everything I need\b/i
 // The close said again: its last line, or a restated callback time with "would that work" / "okay".
-const CLOSE_RESTATED = /\bI(?:'ve| have) got everything\b|\bI have everything I need\b|\bwill (?:give you a call|call you)\b[^?]*\b(?:would that work|okay)\b/i
+// (Verify run: "Great, I'll have Bob give you a call tomorrow morning before ten. Would that work
+// for you?" after the lead had answered the close slipped past "will give you a call".)
+const CLOSE_RESTATED = /\bI(?:'ve| have) got everything\b|\bI have everything I need\b|\b(?:give you a call|call you)\b[^?]*\b(?:would that work|okay)\b/i
 // A time the lead names: "mid-afternoon", "until about five", "tomorrow morning before ten".
 const LEAD_TIME = /\b(?:tomorrow(?: (?:morning|afternoon|evening))?(?: (?:before|after|around|at) (?:\d{1,2}(?::\d{2})?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon))?|(?:this|later this) (?:morning|afternoon|evening)|mid-?(?:morning|afternoon)|(?:before|after|around|at|by|until) (?:about )?(?:\d{1,2}(?::\d{2})?(?: ?[ap]\.?m\.?)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|noon)|(?:in|within) (?:a day or two|an hour|a couple (?:of )?(?:hours|days)|\d+ (?:minutes|hours))|next week|(?:on )?(?:monday|tuesday|wednesday|thursday|friday))\b/i
 
