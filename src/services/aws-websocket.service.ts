@@ -63,6 +63,7 @@ export class AWSWebSocketService {
   private errorListener: ((error: { code: string; message: string }) => void) | null = null;
   private statusUpdateListener: ((payload: WebhookStatusUpdatePayload) => void) | null = null;
   private tipChunkListener: ((delta: string, heading?: string, stage?: string) => void) | null = null;
+  private realtimeTokenWaiters: Array<(reply: { ok?: boolean; token?: string; url?: string; reason?: string }) => void> = [];
 
   constructor() {
     console.log('🚀 [AWSWebSocket] Service initialized');
@@ -363,6 +364,46 @@ export class AWSWebSocketService {
     return this.connectionStatus;
   }
 
+  /**
+   * v3 live coach: a single-use session token and its URL, minted by the backend (the gateway key
+   * and the model id never ship in the extension). Throws with the backend's reason when refused:
+   * 'not-enabled' (agent not on /call-coach/realtime-agents), 'not-configured' (no gateway key),
+   * 'limit', 'gateway-<status>', 'not-deployed' (older backend), or on timeout.
+   */
+  async requestRealtimeToken(timeoutMs = 8000): Promise<{ token: string; url: string }> {
+    if (!this.isConnected()) throw new Error('realtime token: backend not connected');
+    const reply = await new Promise<{ ok?: boolean; token?: string; url?: string; reason?: string }>((resolve, reject) => {
+      const waiter = (r: { ok?: boolean; token?: string; url?: string; reason?: string }) => { clearTimeout(timer); resolve(r); };
+      const timer = setTimeout(() => {
+        this.realtimeTokenWaiters = this.realtimeTokenWaiters.filter((w) => w !== waiter);
+        reject(new Error('realtime token: request timed out'));
+      }, timeoutMs);
+      this.realtimeTokenWaiters.push(waiter);
+      this.sendMessage({ action: 'getRealtimeToken', timestamp: Date.now() }).catch((err) => {
+        clearTimeout(timer);
+        this.realtimeTokenWaiters = this.realtimeTokenWaiters.filter((w) => w !== waiter);
+        reject(err);
+      });
+    });
+    if (!reply.ok || !reply.token || !reply.url) throw new Error(`realtime token refused: ${reply.reason ?? 'unknown'}`);
+    return { token: reply.token, url: reply.url };
+  }
+
+  /**
+   * One live coach usage report per call. The backend's $default handler logs it as a single
+   * `[RealtimeUsage]` CloudWatch line, so Logs Insights can sum cost per agent per day.
+   */
+  async reportRealtimeUsage(usage: { seconds: number; costUsd: number }): Promise<void> {
+    if (!this.isConnected()) return;
+    await this.sendMessage({
+      action: 'realtimeUsage',
+      conversationId: this.conversationId ?? undefined,
+      seconds: Math.round(usage.seconds),
+      costUsd: Number(usage.costUsd.toFixed(5)),
+      timestamp: Date.now(),
+    }).catch((e) => console.warn('⚠️ [AWSWebSocket] realtime usage report failed:', e));
+  }
+
   // ============================================================================
   // PRIVATE METHODS
   // ============================================================================
@@ -483,6 +524,17 @@ export class AWSWebSocketService {
 
         case 'ERROR':
           const errorPayload = data.payload || {};
+          // A backend without the v3 routes answers getRealtimeToken / realtimeUsage via $default
+          // with "Unknown message type". That only means the live coach isn't available here: it
+          // must not surface as a server error or reject a conversation start that is pending.
+          const unknownAction = errorPayload.received?.action;
+          if (unknownAction === 'getRealtimeToken' || unknownAction === 'realtimeUsage') {
+            if (unknownAction === 'getRealtimeToken') {
+              this.realtimeTokenWaiters.shift()?.({ ok: false, reason: 'not-deployed' });
+            }
+            console.log(`ℹ️ [AWSWebSocket] backend has no ${unknownAction} route yet, live coach stays off`);
+            break;
+          }
           console.error('❌ [AWSWebSocket] Server error:', errorPayload);
           this.notifyError(
             errorPayload.code || 'SERVER_ERROR',
@@ -514,6 +566,11 @@ export class AWSWebSocketService {
         case 'PONG':
           // Heartbeat response
           console.log('💓 [AWSWebSocket] Heartbeat acknowledged');
+          break;
+
+        case 'realtimeToken':
+          // Reply to getRealtimeToken. Requests are answered in order on one socket.
+          this.realtimeTokenWaiters.shift()?.(data);
           break;
 
         default:

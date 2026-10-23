@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react";
-import { Mic, MessageSquare, FileText, Code, Maximize2, Minimize2 } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Mic, MessageSquare, FileText, Code, Maximize2, Minimize2, ArrowDown } from "lucide-react";
 import { GreetingsSelector } from "./GreetingsSelector";
 import { useSettingsStore } from "@/stores/settings-store";
 import { highlightText } from "@/utils/highlightKeywords";
+import { groupTranscriptions } from "@/utils/group-transcript";
 import type { Transcription, ScriptOption, CallState } from "@/types";
 
 interface ChatThreadProps {
@@ -16,6 +17,8 @@ interface ChatThreadProps {
   collapsed?: boolean;
   onToggleExpand?: () => void;
   onToggleCollapse?: () => void;
+  /** Side-panel compact mode: collapsed view also shows the caller's latest paragraph. */
+  compact?: boolean;
 }
 
 export function ChatThread({
@@ -29,29 +32,43 @@ export function ChatThread({
   collapsed,
   onToggleExpand,
   onToggleCollapse,
+  compact,
 }: ChatThreadProps) {
+  const paragraphs = useMemo(() => groupTranscriptions(transcriptions), [transcriptions]);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const highlightKeywords = useSettingsStore((s) => s.highlightKeywords);
   const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll logic
-  const scrollToBottom = () => {
-    const container = scrollContainerRef.current;
-    if (container) {
-      const isNearBottom =
-        container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+  // Auto-scroll: follow the newest words unless the agent has scrolled up to read something.
+  // "Following" is decided by the agent's own scrolling, not re-measured after each update: a
+  // lead's paragraph can grow by several lines at once, and the old "within 150px of the
+  // bottom AFTER the update" check quietly stopped following on exactly those turns.
+  const [following, setFollowing] = useState(true);
+  const followingRef = useRef(true);
 
-      if (isNearBottom && transcriptEndRef.current) {
-        transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
-      }
-    } else if (transcriptEndRef.current) {
-        transcriptEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
+  const jumpToBottom = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   };
 
-  useEffect(() => {
-    scrollToBottom();
+  const onScroll = () => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 40;
+    followingRef.current = atBottom;
+    setFollowing(atBottom);
+  };
+
+  useLayoutEffect(() => {
+    if (followingRef.current) jumpToBottom();
   }, [transcriptions]);
+
+  const resumeFollowing = () => {
+    followingRef.current = true;
+    setFollowing(true);
+    jumpToBottom();
+  };
 
   const formatTime = (timestamp: number) => {
     const date = new Date(timestamp);
@@ -62,11 +79,27 @@ export function ChatThread({
     });
   };
 
-  // Collapsed state — just show a compact bar
+  // Collapsed state — the suggested line stays visible above a bar that reopens the thread.
+  // (It used to be just the bar, so collapsing the thread also hid the script.)
   if (collapsed && !expanded) {
     const finalCount = transcriptions.filter(t => t.isFinal).length;
+    const lastCaller = [...paragraphs].reverse().find((p) => p.speaker === "customer");
     return (
-      <div className="px-3 pb-2 mt-auto shrink-0">
+      <div className={`px-3 pb-2 shrink-0 space-y-2 ${compact ? "pt-2" : "mt-auto"}`}>
+        <div className="p-2 border border-[#dddddd] bg-[#F5F7FA] rounded-xl">
+          <GreetingsSelector isLoading={isLoadingScripts} onSelect={onSelectScript} />
+        </div>
+        {/* Compact mode drops the thread, but agents still copy numbers off the caller's
+            last answer — keep that one paragraph. */}
+        {compact && lastCaller && (
+          <div className="px-3 py-2 bg-white rounded-xl border border-[#dddddd]">
+            <div className="text-[10px] font-bold text-gray-500 uppercase mb-0.5">Customer said</div>
+            <p className="text-[14px] leading-relaxed text-[#333333] line-clamp-4">
+              {lastCaller.text}
+              {lastCaller.interim && <span className="opacity-60 italic"> {lastCaller.interim}</span>}
+            </p>
+          </div>
+        )}
         <button
           onClick={onToggleCollapse}
           className="w-full flex items-center justify-between px-3 py-2.5 bg-white rounded-xl border border-[#dddddd] hover:border-[#1B1F6B]/30 transition-colors shadow-sm"
@@ -86,9 +119,13 @@ export function ChatThread({
     );
   }
 
+  // Before anyone has spoken the thread is one line, not a tall empty box above the card
+  // (Kayser's screenshot, 2026-10-23); it grows once the call has words.
+  const empty = transcriptions.length === 0;
+
   return (
-    <div className="flex-1 min-h-0 px-3 pb-2 overflow-hidden flex flex-col">
-      <div className="bg-white backdrop-blur-sm rounded-xl border border-[#dddddd] flex flex-col shadow-inner flex-1 min-h-0 overflow-hidden">
+    <div className={`${empty ? "" : "flex-1 min-h-0"} px-3 pb-2 overflow-hidden flex flex-col`}>
+      <div className={`bg-white backdrop-blur-sm rounded-xl border border-[#dddddd] flex flex-col shadow-inner overflow-hidden ${empty ? "" : "flex-1 min-h-0"}`}>
         {/* Thread Header */}
         <div className="px-3 py-2 border-b border-[#dddddd] flex items-center justify-between bg-[#F5F7FA] rounded-t-xl shrink-0">
           <div className="flex items-center gap-2">
@@ -138,53 +175,54 @@ export function ChatThread({
         </div>
 
         {/* Thread Messages */}
+        <div className={`relative flex flex-col ${empty ? "" : "flex-1 min-h-0"}`}>
         <div
           ref={scrollContainerRef}
-          className="flex-1 p-2 space-y-1.5 overflow-y-auto min-h-0 custom-scrollbar"
+          onScroll={onScroll}
+          className={`p-2 space-y-1.5 overflow-y-auto custom-scrollbar ${empty ? "" : "flex-1 min-h-0"}`}
         >
-          {transcriptions.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-              <div className="w-12 h-12 rounded-full bg-[#F5F7FA] flex items-center justify-center border border-[#dddddd]">
-                <Mic className="w-6 h-6 text-gray-600 animate-pulse" />
-              </div>
-              <p className="text-sm text-gray-500 italic max-w-[200px]">
+          {empty ? (
+            <div className="flex items-center justify-center gap-2 py-1.5 text-center">
+              <Mic className="w-3.5 h-3.5 text-gray-600 animate-pulse" />
+              <p className="text-xs text-gray-500 italic">
                 {callState === "active"
                   ? "Listening for conversation..."
-                  : "Start a call to see the live conversation thread"}
+                  : "The conversation shows here once a call starts"}
               </p>
             </div>
           ) : (
             <>
-              {transcriptions
-                .filter((t) => t.text && t.text.trim().length > 0)
-                .map((t, index) => (
+              {/* One bubble per speaker turn: consecutive fragments are joined into a
+                  paragraph so a lead's numbers read as one line. */}
+              {paragraphs.map((p) => (
                   <div
-                    key={t.id || index}
+                    key={p.id}
                     className={`flex flex-col ${
-                      t.speaker === "agent" ? "items-end" : "items-start"
+                      p.speaker === "agent" ? "items-end" : "items-start"
                     } group animate-in slide-in-from-bottom-1 duration-300`}
                   >
                     <div className="flex items-center gap-2 mb-0.5 px-1">
                       <span className="text-[9px] font-bold text-gray-500 uppercase">
-                        {t.speaker === "agent" ? "You" : "Customer"}
+                        {p.speaker === "agent" ? "You" : "Customer"}
                       </span>
                       <span className="text-[9px] text-gray-700 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {formatTime(t.timestamp)}
+                        {formatTime(p.timestamp)}
                       </span>
                     </div>
                     <div
-                      className={`max-w-[92%] px-2.5 py-1.5 rounded-xl text-[13px] shadow-sm transition-all duration-200 leading-snug ${
-                        t.speaker === "agent"
+                      className={`max-w-[92%] px-3 py-2 rounded-xl text-[14px] shadow-sm transition-all duration-200 leading-relaxed ${
+                        p.speaker === "agent"
                           ? "bg-[#1B1F6B] text-white rounded-tr-none"
                           : "bg-[#F5F7FA] text-[#333333] rounded-tl-none border border-[#dddddd]"
-                      } ${
-                        !t.isFinal
-                          ? "opacity-70 italic scale-[0.98]"
-                          : "scale-100"
                       }`}
                     >
-                      {highlightText(t.text, highlightKeywords)}
-                      {!t.isFinal && (
+                      {p.text && highlightText(p.text, highlightKeywords)}
+                      {p.interim && (
+                        <span className="opacity-70 italic">
+                          {p.text ? " " : ""}{p.interim}
+                        </span>
+                      )}
+                      {p.interim && (
                         <span className="ml-1 inline-flex gap-0.5">
                           <span
                             className="w-1 h-1 bg-current rounded-full animate-bounce"
@@ -204,6 +242,15 @@ export function ChatThread({
 
            {/* Anchor for auto-scroll */}
            <div ref={transcriptEndRef} className="h-px w-full" />
+        </div>
+        {!following && transcriptions.length > 0 && (
+          <button
+            onClick={resumeFollowing}
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1 px-3 py-1 text-[11px] font-semibold text-white bg-[#1B1F6B] hover:bg-[#14174f] rounded-full shadow-md"
+          >
+            <ArrowDown className="w-3 h-3" /> Jump to latest
+          </button>
+        )}
         </div>
 
         {/* AI Suggestion Area - Fixed at bottom of thread container */}

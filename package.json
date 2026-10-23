@@ -1,6 +1,6 @@
 {
   "name": "devassist-call-coach",
-  "version": "2.2.14",
+  "version": "3.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -26,8 +26,11 @@
     "zustand": "^5.0.8"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.72.1",
     "@aws-sdk/client-apigatewaymanagementapi": "^3.1009.0",
     "@aws-sdk/client-dynamodb": "^3.1009.0",
+    "@aws-sdk/client-secrets-manager": "^3.1156.0",
+    "@aws-sdk/client-ssm": "^3.1009.0",
     "@crxjs/vite-plugin": "^2.2.1",
     "@tailwindcss/postcss": "^4.1.16",
     "@testing-library/jest-dom": "^6.9.1",

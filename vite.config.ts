@@ -1,11 +1,11 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { crx, ManifestV3Export } from "@crxjs/vite-plugin";
 import path from "path";
 const manifest: ManifestV3Export = {
   manifest_version: 3,
   name: "Simple.biz Call Coach",
-  version: "2.2.14",
+  version: "3.0.0",
   description: "Real-time AI-powered call coaching with AWS Lambda backend, conversation intelligence, and Developer Mode for offline testing",
   icons: {
     "16": "icons/icon16.png",
@@ -60,8 +60,14 @@ const manifest: ManifestV3Export = {
     },
   ],
 };
-export default defineConfig({
-  plugins: [react(), crx({ manifest })],
+// Local test builds only (VITE_EXPERIMENTS=true in .env.local): the live coach mints its own session
+// tokens with the gateway key, before the backend route is deployed. The gateway sends no CORS
+// headers, so that build needs a host permission; store builds don't get it.
+export default defineConfig(({ mode }) => {
+  const experiments = loadEnv(mode, process.cwd(), "").VITE_EXPERIMENTS === "true";
+  const hosts = manifest.host_permissions ?? [];
+  return {
+  plugins: [react(), crx({ manifest: { ...manifest, host_permissions: experiments ? [...hosts, "https://ai-gateway.vercel.sh/*"] : hosts } })],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
@@ -75,4 +81,5 @@ export default defineConfig({
       },
     },
   },
+  };
 });

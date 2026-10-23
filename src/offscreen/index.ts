@@ -1,6 +1,7 @@
 // Import validator for pre-connection checks
 import { logger } from '@/utils/logger'
 import { startPTTCapture, stopPTTCapture } from './ptt-capture'
+import { armRealtimeAuto, stopRealtimeAuto, realtimeLeadAudio, realtimeLeadSpoke, realtimeNoteAgent, realtimeAgentSpoke } from './realtime-auto'
 
 logger.log('✅ Offscreen document ready for audio capture with Deepgram (Dual Stream)')
 
@@ -160,6 +161,8 @@ async function startDualStreamCapture(streamId: string, apiKey: string) {
                 if (callerSocket?.readyState === WebSocket.OPEN) {
                     callerSocket.send(event.data.buffer)
                 }
+                // v3: the live coach hears the lead's side only (buffered until it opens; no-op when off)
+                realtimeLeadAudio(event.data.buffer)
 
                 // Forward audio level to background/UI for monitoring
                 if (event.data.audioLevel !== undefined) {
@@ -177,6 +180,10 @@ async function startDualStreamCapture(streamId: string, apiKey: string) {
         // 6. Connect Sockets
         await connectDeepgramSockets()
         isCapturing = true
+
+        // 7. v3 live coach: armed now, opened on the lead's first words (most dials never get
+        // there), and only if the backend hands out a token. Never delays capture.
+        armRealtimeAuto()
 
     } catch (err: any) {
         logger.error('❌ Failed to start Dual Stream Capture:', err)
@@ -307,6 +314,14 @@ function handleDualResponse(data: any, source: 'agent' | 'caller') {
     if (!transcript || transcript.trim().length === 0) return
 
     const isFinal = data.is_final
+
+    // v3 live coach: the lead's first words open the session; it hears only the lead, so it gets
+    // the agent's words as text
+    if (source === 'caller') realtimeLeadSpoke()
+    else {
+        realtimeAgentSpoke()
+        if (isFinal) realtimeNoteAgent(transcript)
+    }
     const confidence = alt.confidence || 0
     const entities = alt.entities || []
 
@@ -400,6 +415,7 @@ function dispatchTranscript(text: string, speaker: 'agent' | 'caller', isFinal: 
 
 function stopDualStreamCapture() {
     isCapturing = false
+    stopRealtimeAuto()
 
     // Stop Sockets
     if (agentSocket) {

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Settings } from '@/types'
+import type { Settings, ScriptTextSize } from '@/types'
 
 interface SettingsStore extends Settings {
   setDeepgramApiKey: (key: string) => void
@@ -10,6 +10,8 @@ interface SettingsStore extends Settings {
   setEnableNotifications: (enabled: boolean) => void
   setHighlightKeywords: (keywords: string[]) => void
   setTheme: (theme: 'light' | 'dark' | 'system') => void
+  setCompactMode: (compactMode: boolean) => void
+  setScriptTextSize: (scriptTextSize: ScriptTextSize) => void
 }
 
 export const useSettingsStore = create<SettingsStore>()(
@@ -22,6 +24,8 @@ export const useSettingsStore = create<SettingsStore>()(
       enableNotifications: true,
       highlightKeywords: ['price', 'pricing', 'cost', 'budget', 'contract', 'sign', 'decision', 'timeline', 'competitor'],
       theme: 'system',
+      compactMode: false,
+      scriptTextSize: 'lg',
 
       setDeepgramApiKey: (deepgramApiKey) => set({ deepgramApiKey }),
       setN8nWebhookUrl: (n8nWebhookUrl) => set({ n8nWebhookUrl }),
@@ -30,6 +34,8 @@ export const useSettingsStore = create<SettingsStore>()(
       setHighlightKeywords: (highlightKeywords) => set({ highlightKeywords }),
       setEnableNotifications: (enableNotifications) => set({ enableNotifications }),
       setTheme: (theme) => set({ theme }),
+      setCompactMode: (compactMode) => set({ compactMode }),
+      setScriptTextSize: (scriptTextSize) => set({ scriptTextSize }),
     }),
     {
       name: 'devassist-settings',

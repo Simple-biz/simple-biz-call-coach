@@ -117,6 +117,27 @@ export async function updateConnection(connectionId: string, updates: Partial<We
   }
 }
 
+/**
+ * Live coach spend guard: count one Realtime token against this connection, refusing past `max`.
+ * Atomic (conditional ADD on the ConnectionsTable row), so parallel requests can't overshoot.
+ * Returns false when the cap is reached or the connection row no longer exists.
+ */
+export async function countRealtimeToken(connectionId: string, max: number): Promise<boolean> {
+  try {
+    await dynamoClient.send(new UpdateItemCommand({
+      TableName: CONNECTIONS_TABLE,
+      Key: { connectionId: { S: connectionId } },
+      UpdateExpression: 'ADD realtimeTokens :one',
+      ConditionExpression: 'attribute_exists(connectionId) AND (attribute_not_exists(realtimeTokens) OR realtimeTokens < :max)',
+      ExpressionAttributeValues: { ':one': { N: '1' }, ':max': { N: String(max) } },
+    }));
+    return true;
+  } catch (error: any) {
+    if (error?.name === 'ConditionalCheckFailedException') return false;
+    throw error;
+  }
+}
+
 export async function deleteConnection(connectionId: string): Promise<void> {
   try {
     await dynamoClient.send(new DeleteItemCommand({

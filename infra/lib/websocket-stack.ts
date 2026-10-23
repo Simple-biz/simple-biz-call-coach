@@ -8,6 +8,11 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as sns from 'aws-cdk-lib/aws-sns';
+import * as subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as cw_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
 import { Construct } from 'constructs';
 
 export interface WebSocketStackProps extends cdk.StackProps {
@@ -112,11 +117,16 @@ export class WebSocketStack extends cdk.Stack {
       entry: 'lib/lambda/disconnect/index.ts',
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_20_X,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
       environment: sharedEnv,
       tracing: lambda.Tracing.PASS_THROUGH,
       logRetention: logs.RetentionDays.ONE_WEEK,
+      vpc,
+      vpcSubnets: {
+        subnets: privateSubnets
+      },
+      securityGroups: [lambdaSecurityGroup],
       bundling: {
         minify: true,
         sourceMap: true,
@@ -229,6 +239,83 @@ export class WebSocketStack extends cdk.Stack {
       }
     });
 
+    // v3 live coach (ported from call-coach-hsl CCHv2-ST7): Realtime mini session tokens for the
+    // extension's auto mode. The AI Gateway key lives in its OWN secret. CDK creates it with a
+    // random placeholder and never sets the value, so the key is not in the CloudFormation template
+    // (unlike ApiKeysSecret above). Set it once, by hand:
+    //   aws secretsmanager put-secret-value --secret-id call-coach/ai-gateway --secret-string <vck_…>
+    // Until then the route answers not-configured.
+    const aiGatewaySecret = new secretsmanager.Secret(this, 'AiGatewaySecret', {
+      secretName: 'call-coach/ai-gateway',
+      description: 'Vercel AI Gateway API key for the Realtime mini live coach (v3). Value set by hand, never in the template.',
+    });
+    // The rollout switch: which agents get Realtime mini. '-' = nobody (SSM won't store an empty
+    // String), '*' = everyone, or a comma list of agent ids. Changed at runtime, no deploy:
+    //   aws ssm put-parameter --name /call-coach/realtime-agents --type String --value 'a@x,b@y' --overwrite
+    // NOT created by CDK on purpose: CloudFormation would reset an owned parameter's value to the
+    // template's whenever the resource definition changed, silently switching the rollout off.
+    // CDK only grants read. Until the parameter exists, the Lambda treats the list as empty.
+    const realtimeAgentsParam = ssm.StringParameter.fromStringParameterName(
+      this, 'RealtimeAgentsParam', '/call-coach/realtime-agents',
+    );
+    // Outside the VPC on purpose: it needs internet egress to ai-gateway.vercel.sh and no database.
+    // Explicit log group (not logRetention) so the spend alarm's metric filter has it at deploy time.
+    const realtimeTokenLogs = new logs.LogGroup(this, 'RealtimeTokenLogGroup', {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    const realtimeTokenHandler = new nodejs.NodejsFunction(this, 'RealtimeTokenHandler', {
+      entry: 'lib/lambda/realtime-token/index.ts',
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_20_X,
+      timeout: cdk.Duration.seconds(10),
+      memorySize: 256,
+      environment: {
+        CONNECTIONS_TABLE: props.connectionsTable.tableName,
+        AI_GATEWAY_SECRET_ARN: aiGatewaySecret.secretArn,
+        REALTIME_MODEL: 'openai/gpt-realtime-mini',
+        REALTIME_AGENTS_PARAM: realtimeAgentsParam.parameterName,
+        AWS_NODEJS_CONNECTION_REUSE_ENABLED: '1',
+      },
+      logGroup: realtimeTokenLogs,
+      bundling: { minify: true, sourceMap: true, externalModules: ['@aws-sdk/*'] },
+    });
+    aiGatewaySecret.grantRead(realtimeTokenHandler);
+    realtimeAgentsParam.grantRead(realtimeTokenHandler);
+    // Write: the per-connection token counter (shared/dynamo-client countRealtimeToken).
+    props.connectionsTable.grantReadWriteData(realtimeTokenHandler);
+
+    // Spend alarm: every issued token logs "[RealtimeToken] minted". Normal full-team volume is a
+    // few dozen an hour (each call 1 token plus rare reconnects), so 150 in an hour means something
+    // is minting on our credits. Its own topic: DevAssist-Monitoring depends on this stack, so its
+    // AlarmTopic can't be passed in here without a dependency cycle.
+    const tokensMinted = new logs.MetricFilter(this, 'RealtimeTokensMintedFilter', {
+      logGroup: realtimeTokenLogs,
+      filterPattern: logs.FilterPattern.literal('"[RealtimeToken] minted"'),
+      metricNamespace: 'SimpleBizCallCoach',
+      metricName: 'RealtimeTokensMinted',
+      metricValue: '1',
+      defaultValue: 0,
+    });
+    const realtimeAlertTopic = new sns.Topic(this, 'RealtimeSpendAlertTopic', {
+      displayName: 'Simple.biz Call Coach live-coach spend alert',
+    });
+    realtimeAlertTopic.addSubscription(
+      new subscriptions.EmailSubscription(
+        process.env.REALTIME_ALERT_EMAIL || process.env.ALERT_EMAIL || 'kayserb@simple.biz',
+      ),
+    );
+    const tokensAlarm = new cloudwatch.Alarm(this, 'RealtimeTokensMintedAlarm', {
+      alarmName: 'sbcc-live-coach-tokens-minted-high',
+      alarmDescription: 'More than 150 live-coach session tokens in an hour: possible abuse of AI Gateway credits. Check the RealtimeTokenLogGroup logs and set /call-coach/realtime-agents to "-" to stop.',
+      metric: tokensMinted.metric({ statistic: 'Sum', period: cdk.Duration.hours(1) }),
+      threshold: 150,
+      evaluationPeriods: 1,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+    tokensAlarm.addAlarmAction(new cw_actions.SnsAction(realtimeAlertTopic));
+
     // Grant DynamoDB permissions
     props.connectionsTable.grantReadWriteData(connectHandler);
     props.connectionsTable.grantReadWriteData(disconnectHandler);
@@ -279,6 +366,11 @@ export class WebSocketStack extends cdk.Stack {
 
     this.webSocketApi.addRoute('getIntelligence', {
       integration: new integrations.WebSocketLambdaIntegration('IntelligenceIntegration', intelligenceHandler),
+      returnResponse: true,
+    });
+
+    this.webSocketApi.addRoute('getRealtimeToken', {
+      integration: new integrations.WebSocketLambdaIntegration('RealtimeTokenIntegration', realtimeTokenHandler),
       returnResponse: true,
     });
 

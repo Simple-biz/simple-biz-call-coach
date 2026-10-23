@@ -51,3 +51,9 @@ bmad-custom-src/
 ._*
 
 devassist-call-coach-backend/
+
+# Simulator run logs (infra/scripts/simulate-lead-persona.ts)
+infra/sim-logs/
+
+# Real call recordings and their transcripts (lead audio): local only, never committed
+sample_recordings/
